@@ -2,5 +2,5 @@
 // 初回作成と接続の手順はSETUP.mdを参照してください。
 // 例: API_BASE: "https://gallery-links.example.workers.dev"
 window.IMAGE_VIEWER_CONFIG = Object.freeze({
-  API_BASE: ""
+  API_BASE: "https://shakemaru110-github-io.syakemaru-5521731.workers.dev"
 });
