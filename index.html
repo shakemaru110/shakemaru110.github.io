@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>作品画像ビューア</title>
+  <title>ギャラリー画像ビューア</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; padding: 48px 20px; font-family: sans-serif; background: #f5f7fa; color: #202938; }
@@ -28,6 +28,9 @@
     img { display: block; max-width: 100%; width: auto; height: auto; margin: auto; }
     figcaption { margin-top: 10px; color: #536176; font-size: .85rem; }
     .image-error { line-height: 1.7; }
+    figure.pending { min-height: 65vh; display: flex; flex-direction: column; justify-content: center; }
+    .image-message { padding: 20px 0; line-height: 1.7; color: #536176; }
+    .retry { align-self: flex-start; margin-bottom: 12px; }
     [hidden] { display: none !important; }
     @media (max-width: 480px) { body { padding: 28px 14px; } .controls { flex-direction: column; } }
   </style>
@@ -36,23 +39,23 @@
 </head>
 <body>
   <main>
-    <h1>作品画像ビューア</h1>
-    <p class="intro">作品のURLを入力すると、作品画像をページ順に縦に表示します。</p>
+    <h1>ギャラリー画像ビューア</h1>
+    <p class="intro">ギャラリーのURLから、大きな画像をページ順に縦に表示します。</p>
     <form id="url-form">
-      <label for="url">作品ページのURL</label>
+      <label for="url">ギャラリーページのURL</label>
       <div class="controls">
-        <input id="url" name="url" type="url" placeholder="https://www.pixiv.net/artworks/141109100" autocomplete="url" aria-describedby="url-hint" required>
+        <input id="url" name="url" type="url" placeholder="https://e-hentai.org/g/4270520/0b04a91d26/" autocomplete="url" aria-describedby="url-hint" required>
         <button id="enter" type="submit">Enter</button>
       </div>
+      <p id="url-hint" class="hint">スクロールすると、近くの大きな画像から読み込みます。</p>
     </form>
     <p id="status" role="status" aria-live="polite"></p>
-    <section id="results" aria-label="取得した作品画像" hidden>
+    <section id="results" aria-label="ギャラリーの画像" hidden>
       <h2 id="result-title"></h2>
-      <a id="source" target="_blank" rel="noopener noreferrer">Pixivで作品を見る</a>
+      <a id="source" target="_blank" rel="noopener noreferrer">元のギャラリーを見る</a>
       <ol id="images"></ol>
     </section>
     <noscript>画像を表示するにはJavaScriptを有効にしてください。</noscript>
   </main>
 </body>
 </html>
-

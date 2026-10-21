@@ -1,12 +1,12 @@
-﻿// Cloudflare Workers: 外部パッケージ、画像ストレージ、ログイン情報は使用しません。
+﻿// Cloudflare Workers: HTMLからリンクだけを取得し、画像ファイルは保存・中継しません。
 const SITE_ORIGIN = "https://shakemaru110.github.io";
-const PIXIV_ORIGIN = "https://www.pixiv.net";
+const GALLERY_ORIGIN = "https://e-hentai.org";
 
 class HttpError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
 
-function headersFor(origin) {
+function responseHeaders(origin) {
   const headers = new Headers({
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -21,120 +21,163 @@ function headersFor(origin) {
 }
 
 function json(data, status, origin) {
-  const headers = headersFor(origin);
+  const headers = responseHeaders(origin);
   headers.set("Content-Type", "application/json; charset=utf-8");
   return new Response(JSON.stringify(data), { status, headers });
 }
 
-function getArtworkId(value) {
+function parseUrl(value) {
   let url;
   try { url = new URL(value); }
-  catch { throw new HttpError(400, "Pixivの作品URLを入力してください。"); }
-  const match = url.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?artworks\/(\d+)\/?$/i);
-  if (url.protocol !== "https:" || !["www.pixiv.net", "pixiv.net"].includes(url.hostname) ||
-      url.port || url.username || url.password || !match) {
-    throw new HttpError(400, "現在はPixivの作品URLに対応しています。");
+  catch { throw new HttpError(400, "正しいギャラリーURLを入力してください。"); }
+  if (url.origin !== GALLERY_ORIGIN || url.username || url.password) {
+    throw new HttpError(400, "https://e-hentai.org/ のギャラリーに対応しています。");
   }
-  return match[1];
+  return url;
 }
 
-async function pixivFetch(url, accept) {
+function galleryFrom(value) {
+  const url = parseUrl(value);
+  const match = url.pathname.match(/^\/g\/(\d+)\/([a-f0-9]{10})\/?$/i);
+  if (!match) throw new HttpError(400, "/g/番号/トークン/ のギャラリーURLを入力してください。");
+  return { id: match[1], url: GALLERY_ORIGIN + "/g/" + match[1] + "/" + match[2] + "/" };
+}
+
+function imagePageFrom(value) {
+  const url = parseUrl(value);
+  const match = url.pathname.match(/^\/s\/([a-f0-9]{10})\/(\d+)-([1-9]\d*)\/?$/i);
+  if (!match) throw new HttpError(400, "画像ページのURLが正しくありません。");
+  return { id: match[2], index: Number(match[3]),
+    url: GALLERY_ORIGIN + "/s/" + match[1] + "/" + match[2] + "-" + match[3] };
+}
+
+function decodeHtml(value) {
+  return value.replace(/&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt|nbsp);/gi, function (entity, key) {
+    const named = { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " " };
+    if (key[0] !== "#") return named[key.toLowerCase()];
+    const numeric = key[1].toLowerCase() === "x" ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+    return numeric > 0 && numeric <= 0x10ffff ? String.fromCodePoint(numeric) : entity;
+  });
+}
+
+function attributes(tag) {
+  const result = new Map();
+  const pattern = /([^\s=<>/"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>\x60]+)))?/g;
+  for (const match of tag.matchAll(pattern)) {
+    result.set(match[1].toLowerCase(), decodeHtml(match[2] ?? match[3] ?? match[4] ?? ""));
+  }
+  return result;
+}
+
+// 一致したタグの属性のみを読み、取得先のスクリプトは実行しない。
+function tags(html, name) {
+  return html.match(new RegExp("<" + name + "\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", "gi")) || [];
+}
+
+function parseGallery(html, gallery, requestedPage) {
+  const entries = new Map();
+  let lastPage = requestedPage;
+  for (const tag of tags(html, "a")) {
+    const href = attributes(tag).get("href");
+    if (!href) continue;
+    let url;
+    try { url = new URL(href, gallery.url); }
+    catch { continue; }
+    if (url.origin !== GALLERY_ORIGIN || url.username || url.password) continue;
+    const imageMatch = url.pathname.match(/^\/s\/([a-f0-9]{10})\/(\d+)-([1-9]\d*)\/?$/i);
+    if (imageMatch && imageMatch[2] === gallery.id) {
+      const index = Number(imageMatch[3]);
+      if (Number.isSafeInteger(index)) {
+        entries.set(index, { index, pageUrl: GALLERY_ORIGIN + url.pathname.replace(/\/$/, "") });
+      }
+    }
+    if (url.pathname === new URL(gallery.url).pathname) {
+      const page = url.searchParams.get("p");
+      if (page && /^\d+$/.test(page) && Number.isSafeInteger(Number(page))) {
+        lastPage = Math.max(lastPage, Number(page));
+      }
+    }
+  }
+  if (!entries.size) {
+    throw new HttpError(422, "画像一覧が見つかりません。公開状態・ログイン要求・アクセス制限をご確認ください。");
+  }
+  return { source: gallery.url, galleryId: gallery.id, page: requestedPage, pageCount: lastPage + 1,
+    entries: [...entries.values()].sort(function (a, b) { return a.index - b.index; }) };
+}
+
+function checkedImageUrl(value) {
+  let url;
+  try { url = new URL(value, GALLERY_ORIGIN); }
+  catch { throw new HttpError(502, "本文画像のリンクを確認できませんでした。"); }
+  const allowed = url.hostname.endsWith(".hath.network") ||
+    ["ehgt.org", "e-hentai.org"].includes(url.hostname);
+  if (url.protocol !== "https:" || !allowed || url.username || url.password ||
+      /\/(?:509|503|kokomade)\.(?:gif|png|jpg)$/i.test(url.pathname)) {
+    throw new HttpError(422, "本文画像を表示できません。配信元の制限や画像リンクをご確認ください。");
+  }
+  return url.href;
+}
+
+function parseImage(html, page) {
+  const mainImages = tags(html, "img").map(attributes).filter(function (attrs) { return attrs.get("id") === "img"; });
+  if (mainImages.length !== 1 || !mainImages[0].get("src")) {
+    throw new HttpError(422, "本文画像が見つかりません。公開状態・ログイン要求・アクセス制限をご確認ください。");
+  }
+  return { source: page.url, index: page.index, imageUrl: checkedImageUrl(mainImages[0].get("src")) };
+}
+
+async function fetchHtml(url) {
+  let response;
   try {
-    return await fetch(url, {
-      headers: { "Referer": PIXIV_ORIGIN + "/", "Accept": accept },
+    response = await fetch(url, {
+      headers: { "Accept": "text/html", "Referer": GALLERY_ORIGIN + "/" },
       redirect: "manual",
       cache: "no-store",
       signal: AbortSignal.timeout(15000)
     });
   } catch {
-    throw new HttpError(502, "Pixivに接続できませんでした。時間をおいて再度お試しください。");
+    throw new HttpError(502, "取得先に接続できませんでした。時間をおいて再度お試しください。");
   }
-}
-
-function originalUrl(page, id, index) {
-  let url;
-  try { url = new URL(page?.urls?.original); }
-  catch { throw new HttpError(502, "作品の画像URLを確認できませんでした。"); }
-  const file = new RegExp("^/img-original/img/[0-9/]+/" + id + "_p" + index + "\\.(jpg|jpeg|png|gif|webp|avif)$", "i");
-  if (url.origin !== "https://i.pximg.net" || url.username || url.password ||
-      url.search || !file.test(url.pathname)) {
-    throw new HttpError(422, "この作品形式にはまだ対応していません。");
-  }
-  return url.href;
-}
-
-async function getPages(id) {
-  // ページ全体のimgを収集せず、作品本文の画像一覧だけを取得する。
-  // Pixivのサイト内部で使われるエンドポイントのため、仕様変更時は対応が必要。
-  const response = await pixivFetch(PIXIV_ORIGIN + "/ajax/illust/" + id + "/pages", "application/json");
   if (!response.ok) {
-    throw new HttpError(502, "Pixivから画像一覧を取得できませんでした。非公開・削除済み・ログインが必要な作品は表示できません。");
+    throw new HttpError(502, "取得先が応答しませんでした（HTTP " + response.status + "）。アクセス制限は解除できません。");
   }
-  let data;
-  try { data = await response.json(); }
-  catch { throw new HttpError(502, "Pixivの応答形式を確認できませんでした。"); }
-  if (data.error || !Array.isArray(data.body) || !data.body.length) {
-    throw new HttpError(422, "公開された作品画像が見つかりませんでした。ログインが必要な作品には対応していません。");
+  const type = response.headers.get("Content-Type") || "";
+  if (!/text\/html/i.test(type)) {
+    throw new HttpError(502, "取得先からHTML以外の応答が返されました。");
   }
-  return data.body;
+  const html = await response.text();
+  if (html.length > 3000000) throw new HttpError(502, "ページが大きすぎるため取得を中止しました。");
+  return html;
 }
 
 export default {
   async fetch(request) {
     const origin = request.headers.get("Origin");
-    if (origin && !headersFor(origin).has("Access-Control-Allow-Origin")) {
+    if (origin && !responseHeaders(origin).has("Access-Control-Allow-Origin")) {
       return json({ error: "このサイトからのアクセスは許可されていません。" }, 403, origin);
     }
-    if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204, headers: headersFor(origin) });
-    }
-    if (request.method !== "GET") {
-      return json({ error: "GETに対応しています。" }, 405, origin);
-    }
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: responseHeaders(origin) });
+    if (request.method !== "GET") return json({ error: "GETに対応しています。" }, 405, origin);
     try {
-      const url = new URL(request.url);
-      if (url.pathname === "/api/images") {
-        const id = getArtworkId(url.searchParams.get("url"));
-        const pages = await getPages(id);
-        const images = pages.map(function (page, index) {
-          return {
-            originalUrl: originalUrl(page, id, index),
-            displayUrl: "/image?id=" + id + "&page=" + index,
-            width: page.width,
-            height: page.height
-          };
-        });
-        return json({ source: PIXIV_ORIGIN + "/artworks/" + id, images }, 200, origin);
+      const endpoint = new URL(request.url);
+      if (endpoint.pathname === "/api/images") {
+        const gallery = galleryFrom(endpoint.searchParams.get("url"));
+        const pageValue = endpoint.searchParams.get("page") || "0";
+        if (!/^\d+$/.test(pageValue) || !Number.isSafeInteger(Number(pageValue))) {
+          throw new HttpError(400, "一覧のページ番号が正しくありません。");
+        }
+        const page = Number(pageValue);
+        const html = await fetchHtml(gallery.url + (page ? "?p=" + page : ""));
+        return json(parseGallery(html, gallery, page), 200, origin);
       }
-      if (url.pathname === "/image") {
-        const id = url.searchParams.get("id") || "";
-        const pageValue = url.searchParams.get("page") || "";
-        if (!/^\d+$/.test(id) || !/^\d+$/.test(pageValue)) {
-          throw new HttpError(400, "作品IDまたはページ番号が正しくありません。");
-        }
-        const index = Number(pageValue);
-        const pages = await getPages(id);
-        if (!Number.isSafeInteger(index) || index >= pages.length) {
-          throw new HttpError(404, "指定したページは見つかりませんでした。");
-        }
-        const image = await pixivFetch(originalUrl(pages[index], id, index), "image/*");
-        if (!image.ok) throw new HttpError(502, "Pixivの画像を読み込めませんでした。");
-        const type = image.headers.get("Content-Type") || "";
-        if (!/^image\/(png|jpe?g|gif|webp|avif)(;|$)/i.test(type)) {
-          if (image.body) await image.body.cancel();
-          throw new HttpError(502, "画像以外の応答を受信しました。");
-        }
-        const headers = headersFor(origin);
-        headers.set("Content-Type", type);
-        headers.set("Content-Disposition", "inline");
-        // arrayBufferやファイル保存を使わず、受信ストリームをそのままブラウザに渡す。
-        return new Response(image.body, { status: 200, headers });
+      if (endpoint.pathname === "/api/image") {
+        const page = imagePageFrom(endpoint.searchParams.get("url"));
+        return json(parseImage(await fetchHtml(page.url), page), 200, origin);
       }
       throw new HttpError(404, "指定した機能が見つかりませんでした。");
     } catch (error) {
-      return json({ error: error instanceof HttpError ? error.message : "画像の取得中にエラーが発生しました。" },
+      return json({ error: error instanceof HttpError ? error.message : "画像リンクの取得中にエラーが発生しました。" },
         error instanceof HttpError ? error.status : 500, origin);
     }
   }
 };
-
