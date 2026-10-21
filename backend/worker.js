@@ -1,5 +1,4 @@
-﻿// Cloudflare Workers: HTMLからリンクだけを取得し、画像ファイルは保存・中継しません。
-const SITE_ORIGIN = "https://shakemaru110.github.io";
+﻿const SITE_ORIGIN = "https://shakemaru110.github.io";
 const GALLERY_ORIGIN = "https://e-hentai.org";
 
 class HttpError extends Error {
@@ -31,9 +30,9 @@ function json(data, status, origin) {
 function parseUrl(value) {
   let url;
   try { url = new URL(value); }
-  catch { throw new HttpError(400, "正しいギャラリーURLを入力してください。"); }
+  catch { throw new HttpError(400, "正式な形式で入力してください"); }
   if (url.origin !== GALLERY_ORIGIN || url.username || url.password) {
-    throw new HttpError(400, "https://e-hentai.org/ のギャラリーに対応しています。");
+    throw new HttpError(400, "正式な形式で入力してください");
   }
   return url;
 }
@@ -41,14 +40,14 @@ function parseUrl(value) {
 function galleryFrom(value) {
   const url = parseUrl(value);
   const match = url.pathname.match(/^\/g\/(\d+)\/([a-f0-9]{10})\/?$/i);
-  if (!match) throw new HttpError(400, "/g/番号/トークン/ のギャラリーURLを入力してください。");
+  if (!match) throw new HttpError(400, "正式な形式で入力してください");
   return { id: match[1], url: GALLERY_ORIGIN + "/g/" + match[1] + "/" + match[2] + "/" };
 }
 
 function imagePageFrom(value) {
   const url = parseUrl(value);
   const match = url.pathname.match(/^\/s\/([a-f0-9]{10})\/(\d+)-([1-9]\d*)\/?$/i);
-  if (!match) throw new HttpError(400, "画像ページのURLが正しくありません。");
+  if (!match) throw new HttpError(400, "正式な形式で入力してください");
   return { id: match[2], index: Number(match[3]),
     url: GALLERY_ORIGIN + "/s/" + match[1] + "/" + match[2] + "-" + match[3] };
 }
@@ -71,7 +70,6 @@ function attributes(tag) {
   return result;
 }
 
-// 一致したタグの属性のみを読み、取得先のスクリプトは実行しない。
 function tags(html, name) {
   return html.match(new RegExp("<" + name + "\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", "gi")) || [];
 }
@@ -87,19 +85,19 @@ function missingContent(html, kind) {
     hasMainImage: /\bid\s*=\s*["']img["']/i.test(html)
   };
   if (/your ip address[\s\S]{0,200}(?:banned|blocked)|temporarily banned|excessive page(?:loads| loads)|access denied|^\s*nope\.?\s*$/i.test(text)) {
-    return new HttpError(502, "取得先がサーバーからのアクセスを制限しています。", "UPSTREAM_BLOCKED", diagnostics);
+    return new HttpError(502, "アクセスが制限されています。", "UPSTREAM_BLOCKED", diagnostics);
   }
   if (/cf-chl-|challenge-platform|g-recaptcha|h-captcha/i.test(html) || /just a moment|verify (?:that )?you are human/i.test(text)) {
-    return new HttpError(502, "取得先でブラウザによる確認が必要なため、画像を取得できません。", "UPSTREAM_CHALLENGE", diagnostics);
+    return new HttpError(502, "確認が必要なため、取得できませんでした。", "UPSTREAM_CHALLENGE", diagnostics);
   }
   if (/must be logged in|please (?:log|sign) in to|login required/i.test(text)) {
-    return new HttpError(422, "取得先へのログインが必要です。", "UPSTREAM_LOGIN_REQUIRED", diagnostics);
+    return new HttpError(422, "認証が必要です。", "UPSTREAM_LOGIN_REQUIRED", diagnostics);
   }
   if (!text && !tags(html, "a").length && !tags(html, "img").length) {
-    return new HttpError(502, "取得先から空のページが返されました。", "UPSTREAM_EMPTY", diagnostics);
+    return new HttpError(502, "応答を確認できませんでした。", "UPSTREAM_EMPTY", diagnostics);
   }
-  return new HttpError(422, kind === "gallery" ? "取得先のページから画像一覧を読み取れませんでした。" :
-    "取得先のページから本文画像を読み取れませんでした。",
+  return new HttpError(422, kind === "gallery" ? "取得できませんでした。" :
+    "取得できませんでした。",
     kind === "gallery" ? "GALLERY_MARKUP_NOT_FOUND" : "IMAGE_MARKUP_NOT_FOUND", diagnostics);
 }
 
@@ -140,12 +138,12 @@ function parseGallery(html, gallery, requestedPage) {
 function checkedImageUrl(value) {
   let url;
   try { url = new URL(value, GALLERY_ORIGIN); }
-  catch { throw new HttpError(502, "本文画像のリンクを確認できませんでした。"); }
+  catch { throw new HttpError(502, "応答を確認できませんでした。"); }
   const allowed = url.hostname.endsWith(".hath.network") ||
     ["ehgt.org", "e-hentai.org"].includes(url.hostname);
   if (url.protocol !== "https:" || !allowed || url.username || url.password ||
       /\/(?:509|503|kokomade)\.(?:gif|png|jpg)$/i.test(url.pathname)) {
-    throw new HttpError(422, "本文画像を表示できません。配信元の制限や画像リンクをご確認ください。");
+    throw new HttpError(422, "表示できませんでした。");
   }
   return url.href;
 }
@@ -168,17 +166,17 @@ async function fetchHtml(url) {
       signal: AbortSignal.timeout(15000)
     });
   } catch {
-    throw new HttpError(502, "取得先に接続できませんでした。時間をおいて再度お試しください。");
+    throw new HttpError(502, "接続できませんでした。時間をおいて再度お試しください。");
   }
   if (!response.ok) {
-    throw new HttpError(502, "取得先が応答しませんでした（HTTP " + response.status + "）。アクセス制限は解除できません。");
+    throw new HttpError(502, "取得できませんでした。");
   }
   const type = response.headers.get("Content-Type") || "";
   if (!/text\/html/i.test(type)) {
-    throw new HttpError(502, "取得先からHTML以外の応答が返されました。");
+    throw new HttpError(502, "応答を確認できませんでした。");
   }
   const html = await response.text();
-  if (html.length > 3000000) throw new HttpError(502, "ページが大きすぎるため取得を中止しました。");
+  if (html.length > 3000000) throw new HttpError(502, "処理できませんでした。");
   return html;
 }
 
@@ -186,17 +184,17 @@ export default {
   async fetch(request) {
     const origin = request.headers.get("Origin");
     if (origin && !responseHeaders(origin).has("Access-Control-Allow-Origin")) {
-      return json({ error: "このサイトからのアクセスは許可されていません。" }, 403, origin);
+      return json({ error: "アクセスが許可されていません。" }, 403, origin);
     }
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: responseHeaders(origin) });
-    if (request.method !== "GET") return json({ error: "GETに対応しています。" }, 405, origin);
+    if (request.method !== "GET") return json({ error: "許可されていない操作です。" }, 405, origin);
     try {
       const endpoint = new URL(request.url);
       if (endpoint.pathname === "/api/images") {
         const gallery = galleryFrom(endpoint.searchParams.get("url"));
         const pageValue = endpoint.searchParams.get("page") || "0";
         if (!/^\d+$/.test(pageValue) || !Number.isSafeInteger(Number(pageValue))) {
-          throw new HttpError(400, "一覧のページ番号が正しくありません。");
+          throw new HttpError(400, "入力内容を確認してください。");
         }
         const page = Number(pageValue);
         const html = await fetchHtml(gallery.url + (page ? "?p=" + page : ""));
@@ -206,9 +204,9 @@ export default {
         const page = imagePageFrom(endpoint.searchParams.get("url"));
         return json(parseImage(await fetchHtml(page.url), page), 200, origin);
       }
-      throw new HttpError(404, "指定した機能が見つかりませんでした。");
+      throw new HttpError(404, "見つかりませんでした。");
     } catch (error) {
-      return json({ error: error instanceof HttpError ? error.message : "画像リンクの取得中にエラーが発生しました。",
+      return json({ error: error instanceof HttpError ? error.message : "処理中にエラーが発生しました。",
         code: error.code, diagnostics: error.diagnostics },
         error instanceof HttpError ? error.status : 500, origin);
     }

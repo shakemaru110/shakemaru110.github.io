@@ -16,20 +16,20 @@ function showStatus(message, state) {
 function parseGallery(value) {
   let url;
   try { url = new URL(value.trim()); }
-  catch { throw new Error("ギャラリーページのURLを入力してください。"); }
+  catch { throw new Error("正式な形式で入力してください"); }
   const match = url.pathname.match(/^\/g\/(\d+)\/([a-f0-9]{10})\/?$/i);
   if (url.origin !== "https://e-hentai.org" || url.username || url.password || !match) {
-    throw new Error("https://e-hentai.org/g/番号/トークン/ の形式で入力してください。");
+    throw new Error("正式な形式で入力してください");
   }
   return { id: match[1], url: "https://e-hentai.org/g/" + match[1] + "/" + match[2] + "/" };
 }
 
 function apiBase() {
   const value = window.IMAGE_VIEWER_CONFIG?.API_BASE;
-  if (!value) throw new Error("画像リンク取得サーバーが未設定です。公開後のURLをconfig.jsに設定してください。");
+  if (!value) throw new Error("設定を確認してください。");
   const url = new URL(value);
   if (url.protocol !== "https:" || url.username || url.password) {
-    throw new Error("画像リンク取得サーバーの設定を確認してください。");
+    throw new Error("設定を確認してください。");
   }
   return url.origin;
 }
@@ -58,12 +58,12 @@ async function getJson(job, path, values) {
     const response = await fetch(endpoint, { signal: controller.signal, credentials: "omit", cache: "no-store" });
     let data;
     try { data = await response.json(); }
-    catch { throw new Error("画像リンク取得サーバーの応答を確認できませんでした。"); }
-    if (!response.ok) throw new Error(data.error || "画像リンクを取得できませんでした。");
+    catch { throw new Error("応答を確認できませんでした。"); }
+    if (!response.ok) throw new Error(data.error || "取得できませんでした。");
     return data;
   } catch (error) {
     if (controller.signal.aborted) throw new Error("取得が中断されたか、時間がかかりすぎています。");
-    if (error instanceof TypeError) throw new Error("画像リンク取得サーバーに接続できませんでした。");
+    if (error instanceof TypeError) throw new Error("接続できませんでした。");
     throw error;
   } finally {
     clearTimeout(timer);
@@ -75,7 +75,7 @@ function validImageUrl(value) {
   const url = new URL(value);
   const allowed = url.hostname.endsWith(".hath.network") || ["ehgt.org", "e-hentai.org"].includes(url.hostname);
   if (url.protocol !== "https:" || !allowed || url.username || url.password) {
-    throw new Error("本文画像のリンクが正しくありません。");
+    throw new Error("応答を確認できませんでした。");
   }
   return url.href;
 }
@@ -94,19 +94,19 @@ function failEntry(job, entry, message) {
 
 async function resolveEntry(job, entry) {
   entry.state = "loading";
-  entry.message.textContent = "大きな画像を読み込んでいます…";
+  entry.message.textContent = "読み込み中…";
   entry.message.hidden = false;
   entry.retry.hidden = true;
   try {
     const data = await getJson(job, "/api/image", { url: entry.pageUrl });
     if (!isCurrent(job)) return;
     if (data.source !== entry.pageUrl || data.index !== entry.index) {
-      throw new Error("画像ページと取得結果が一致しませんでした。");
+      throw new Error("応答を確認できませんでした。");
     }
     const url = validImageUrl(data.imageUrl);
     entry.image.hidden = false;
     const loadingTimer = setTimeout(function () {
-      if (entry.state === "loading") failEntry(job, entry, "画像の読み込みが完了しませんでした。再読み込みをお試しください。");
+      if (entry.state === "loading") failEntry(job, entry, "読み込めませんでした。再度お試しください。");
     }, 45000);
     job.timers.add(loadingTimer);
     entry.image.onload = function () {
@@ -121,9 +121,8 @@ async function resolveEntry(job, entry) {
     entry.image.onerror = function () {
       clearTimeout(loadingTimer);
       job.timers.delete(loadingTimer);
-      if (entry.state === "loading") failEntry(job, entry, "配信元から画像を読み込めませんでした。再読み込みで新しいリンクを取得できます。");
+      if (entry.state === "loading") failEntry(job, entry, "読み込めませんでした。再度お試しください。");
     };
-    // 画像本体は配信元から直接表示し、JavaScriptやサーバーで保存しない。
     entry.image.src = url;
   } catch (error) {
     failEntry(job, entry, error.message);
@@ -149,14 +148,14 @@ function enqueue(job, entry) {
 function appendEntries(job, data) {
   if (!Array.isArray(data.entries) || !data.entries.length ||
       !Number.isSafeInteger(data.pageCount) || data.pageCount < 1 || data.source !== job.gallery.url) {
-    throw new Error("画像一覧の形式を確認できませんでした。");
+    throw new Error("応答を確認できませんでした。");
   }
   const sorted = [...data.entries].sort(function (a, b) { return a.index - b.index; });
   const fragment = document.createDocumentFragment();
   const added = [];
   for (const dataEntry of sorted) {
     if (!Number.isSafeInteger(dataEntry.index) || dataEntry.index < 1) {
-      throw new Error("画像のページ番号が正しくありません。");
+      throw new Error("入力内容を確認してください。");
     }
     if (job.entries.has(dataEntry.index)) continue;
     const pageUrl = new URL(dataEntry.pageUrl);
@@ -164,7 +163,7 @@ function appendEntries(job, data) {
     if (pageUrl.origin !== "https://e-hentai.org" || pageUrl.username || pageUrl.password ||
         pageUrl.search || pageUrl.hash || !match || match[1] !== job.gallery.id ||
         Number(match[2]) !== dataEntry.index) {
-      throw new Error("ギャラリー内の画像ページではないリンクが返されました。");
+      throw new Error("応答を確認できませんでした。");
     }
     const item = document.createElement("li");
     const figure = document.createElement("figure");
@@ -227,11 +226,10 @@ form.addEventListener("submit", async function (event) {
     }
     button.textContent = "取得中…";
     showStatus("読み込み中…");
-    // 一覧の各ページを順に読む。画像ページの取得は表示位置に合わせて別のキューで進める。
     for (let page = 0; page < job.pageCount; page += 1) {
       const data = await getJson(job, "/api/images", { url: gallery.url, page: String(page) });
       if (!isCurrent(job)) return;
-      if (data.page !== page) throw new Error("一覧のページ番号が一致しませんでした。");
+      if (data.page !== page) throw new Error("応答を確認できませんでした。");
       appendEntries(job, data);
       job.pageCount = Math.max(job.pageCount, data.pageCount);
       job.pagesRead = page + 1;
