@@ -17,12 +17,21 @@ function parseGallery(value) {
   let url;
   try { url = new URL(value.trim()); }
   catch { throw new Error("正式な形式で入力してください"); }
+  if (url.username || url.password) throw new Error("正式な形式で入力してください");
+  const reader = url.pathname.match(/^\/reader\/([1-9]\d{0,11})\.html$/);
+  if (url.origin === "https://hitomi.la" && reader &&
+      (!url.hash || /^#[1-9]\d*$/.test(url.hash)) &&
+      (!url.hash || Number.isSafeInteger(Number(url.hash.slice(1))))) {
+    return { id: reader[1], kind: "reader", url: url.origin + "/reader/" + reader[1] + ".html" };
+  }
   const match = url.pathname.match(/^\/g\/(\d+)\/([a-f0-9]{10})\/?$/i);
-  if (url.origin !== "https://e-hentai.org" || url.username || url.password || !match) {
+  if (url.origin !== "https://e-hentai.org" || !match) {
     throw new Error("正式な形式で入力してください");
   }
-  return { id: match[1], url: "https://e-hentai.org/g/" + match[1] + "/" + match[2] + "/" };
+  return { id: match[1], kind: "gallery", url: "https://e-hentai.org/g/" + match[1] + "/" + match[2] + "/" };
 }
+
+
 
 function apiBase() {
   const value = window.IMAGE_VIEWER_CONFIG?.API_BASE;
@@ -71,14 +80,23 @@ async function getJson(job, path, values) {
   }
 }
 
-function validImageUrl(value) {
-  const url = new URL(value);
-  const allowed = url.hostname.endsWith(".hath.network") || ["ehgt.org", "e-hentai.org"].includes(url.hostname);
-  if (url.protocol !== "https:" || !allowed || url.username || url.password) {
+function validImageUrl(value, job, entry) {
+  const url = new URL(value, job.apiBase);
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("応答を確認できませんでした。");
+  }
+  if (job.gallery.kind === "reader") {
+    if (url.origin !== job.apiBase || url.pathname !== "/api/content" ||
+        url.searchParams.get("url") !== entry.pageUrl) {
+      throw new Error("応答を確認できませんでした。");
+    }
+  } else if (!url.hostname.endsWith(".hath.network") && !["ehgt.org", "e-hentai.org"].includes(url.hostname)) {
     throw new Error("応答を確認できませんでした。");
   }
   return url.href;
 }
+
+
 
 function failEntry(job, entry, message) {
   if (!isCurrent(job)) return;
@@ -98,12 +116,15 @@ async function resolveEntry(job, entry) {
   entry.message.hidden = false;
   entry.retry.hidden = true;
   try {
-    const data = await getJson(job, "/api/image", { url: entry.pageUrl });
+    const data = entry.imageUrl && entry.attempts === 0
+      ? { source: entry.pageUrl, index: entry.index, imageUrl: entry.imageUrl }
+      : await getJson(job, "/api/image", { url: entry.pageUrl });
+    entry.attempts += 1;
     if (!isCurrent(job)) return;
     if (data.source !== entry.pageUrl || data.index !== entry.index) {
       throw new Error("応答を確認できませんでした。");
     }
-    const url = validImageUrl(data.imageUrl);
+    const url = validImageUrl(data.imageUrl, job, entry);
     entry.image.hidden = false;
     const loadingTimer = setTimeout(function () {
       if (entry.state === "loading") failEntry(job, entry, "読み込めませんでした。再度お試しください。");
@@ -159,12 +180,19 @@ function appendEntries(job, data) {
     }
     if (job.entries.has(dataEntry.index)) continue;
     const pageUrl = new URL(dataEntry.pageUrl);
-    const match = pageUrl.pathname.match(/^\/s\/[a-f0-9]{10}\/(\d+)-([1-9]\d*)$/i);
-    if (pageUrl.origin !== "https://e-hentai.org" || pageUrl.username || pageUrl.password ||
-        pageUrl.search || pageUrl.hash || !match || match[1] !== job.gallery.id ||
-        Number(match[2]) !== dataEntry.index) {
-      throw new Error("応答を確認できませんでした。");
+    if (pageUrl.username || pageUrl.password) throw new Error("応答を確認できませんでした。");
+    if (job.gallery.kind === "reader") {
+      if (pageUrl.origin + pageUrl.pathname !== job.gallery.url || pageUrl.search ||
+          pageUrl.hash !== "#" + dataEntry.index) throw new Error("応答を確認できませんでした。");
+    } else {
+      const match = pageUrl.pathname.match(/^\/s\/[a-f0-9]{10}\/(\d+)-([1-9]\d*)$/i);
+      if (pageUrl.origin !== "https://e-hentai.org" || pageUrl.search || pageUrl.hash ||
+          !match || match[1] !== job.gallery.id || Number(match[2]) !== dataEntry.index) {
+        throw new Error("応答を確認できませんでした。");
+      }
     }
+
+
     const item = document.createElement("li");
     const figure = document.createElement("figure");
     figure.className = "pending";
@@ -173,6 +201,10 @@ function appendEntries(job, data) {
     image.decoding = "async";
     image.referrerPolicy = "no-referrer";
     image.hidden = true;
+    if (Number.isSafeInteger(dataEntry.width) && dataEntry.width > 0 &&
+        Number.isSafeInteger(dataEntry.height) && dataEntry.height > 0) {
+      image.width = dataEntry.width; image.height = dataEntry.height;
+    }
     const message = document.createElement("p");
     message.className = "image-message";
     message.hidden = true;
@@ -183,7 +215,7 @@ function appendEntries(job, data) {
     retry.hidden = true;
     figure.append(image, message, retry);
     item.append(figure);
-    const entry = { index: dataEntry.index, pageUrl: pageUrl.href, item, figure, image, message, retry, state: "waiting" };
+    const entry = { index: dataEntry.index, pageUrl: pageUrl.href, item, figure, image, message, retry, state: "waiting", imageUrl: dataEntry.imageUrl || null, attempts: 0 };
     retry.addEventListener("click", function () { enqueue(job, entry); });
     job.entries.set(entry.index, entry);
     job.byItem.set(item, entry);

@@ -1,4 +1,6 @@
-﻿const SITE_ORIGIN = "https://shakemaru110.github.io";
+﻿import { createReaderAdapter } from "./reader.js";
+
+const SITE_ORIGIN = "https://shakemaru110.github.io";
 const GALLERY_ORIGIN = "https://e-hentai.org";
 
 class HttpError extends Error {
@@ -180,6 +182,10 @@ async function fetchHtml(url) {
   return html;
 }
 
+const reader = createReaderAdapter(function (status) {
+  return new HttpError(status, status === 400 ? "正式な形式で入力してください" : "取得できませんでした。");
+});
+
 export default {
   async fetch(request) {
     const origin = request.headers.get("Origin");
@@ -191,18 +197,27 @@ export default {
     try {
       const endpoint = new URL(request.url);
       if (endpoint.pathname === "/api/images") {
-        const gallery = galleryFrom(endpoint.searchParams.get("url"));
+        const source = reader.parse(endpoint.searchParams.get("url"));
+        const gallery = source ? null : galleryFrom(endpoint.searchParams.get("url"));
         const pageValue = endpoint.searchParams.get("page") || "0";
         if (!/^\d+$/.test(pageValue) || !Number.isSafeInteger(Number(pageValue))) {
           throw new HttpError(400, "入力内容を確認してください。");
         }
         const page = Number(pageValue);
+        if (source) return json(await reader.list(source, page), 200, origin);
         const html = await fetchHtml(gallery.url + (page ? "?p=" + page : ""));
         return json(parseGallery(html, gallery, page), 200, origin);
       }
       if (endpoint.pathname === "/api/image") {
+        const source = reader.parse(endpoint.searchParams.get("url"));
+        if (source) return json(await reader.image(source), 200, origin);
         const page = imagePageFrom(endpoint.searchParams.get("url"));
         return json(parseImage(await fetchHtml(page.url), page), 200, origin);
+      }
+      if (endpoint.pathname === "/api/content") {
+        const source = reader.parse(endpoint.searchParams.get("url"));
+        if (!source) throw new HttpError(400, "正式な形式で入力してください");
+        return await reader.content(source, responseHeaders(origin));
       }
       throw new HttpError(404, "見つかりませんでした。");
     } catch (error) {
