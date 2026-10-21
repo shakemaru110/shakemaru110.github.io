@@ -1,0 +1,59 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>作品画像ビューア</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 48px 20px; font-family: sans-serif; background: #f5f7fa; color: #202938; }
+    main { width: 100%; max-width: 820px; margin: auto; }
+    h1 { margin: 0 0 12px; font-size: 1.6rem; }
+    .intro, .hint { color: #536176; line-height: 1.7; }
+    form { margin: 28px 0 12px; }
+    label { display: block; margin-bottom: 12px; font-weight: bold; }
+    .controls { display: flex; gap: 10px; }
+    input { flex: 1; min-width: 0; padding: 14px; border: 1px solid #8993a3; border-radius: 8px; font: inherit; }
+    button { padding: 14px 22px; border: 0; border-radius: 8px; background: #245bd6; color: white; font: inherit; cursor: pointer; }
+    button:hover { background: #1948b0; }
+    button:disabled { opacity: .6; cursor: wait; }
+    :focus-visible { outline: 3px solid #668bee; outline-offset: 3px; }
+    a { color: #245bd6; overflow-wrap: anywhere; }
+    .hint { font-size: .85rem; }
+    #status { min-height: 1.7em; line-height: 1.7; overflow-wrap: anywhere; }
+    #status[data-state="error"], .image-error { color: #a32626; }
+    #results { margin-top: 24px; }
+    #images { display: flex; flex-direction: column; gap: 24px; padding: 0; list-style: none; }
+    figure { margin: 0; padding: 12px; border: 1px solid #dde3ec; border-radius: 10px; background: white; }
+    img { display: block; max-width: 100%; width: auto; height: auto; margin: auto; }
+    figcaption { margin-top: 10px; color: #536176; font-size: .85rem; }
+    .image-error { line-height: 1.7; }
+    [hidden] { display: none !important; }
+    @media (max-width: 480px) { body { padding: 28px 14px; } .controls { flex-direction: column; } }
+  </style>
+  <script src="./config.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>作品画像ビューア</h1>
+    <p class="intro">作品のURLを入力すると、作品画像をページ順に縦に表示します。</p>
+    <form id="url-form">
+      <label for="url">作品ページのURL</label>
+      <div class="controls">
+        <input id="url" name="url" type="url" placeholder="https://www.pixiv.net/artworks/141109100" autocomplete="url" aria-describedby="url-hint" required>
+        <button id="enter" type="submit">Enter</button>
+      </div>
+      <p id="url-hint" class="hint">現在はPixivの公開イラスト・漫画に対応しています。</p>
+    </form>
+    <p id="status" role="status" aria-live="polite"></p>
+    <section id="results" aria-label="取得した作品画像" hidden>
+      <h2 id="result-title"></h2>
+      <a id="source" target="_blank" rel="noopener noreferrer">Pixivで作品を見る</a>
+      <ol id="images"></ol>
+    </section>
+    <noscript>画像を表示するにはJavaScriptを有効にしてください。</noscript>
+  </main>
+</body>
+</html>
+
