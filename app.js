@@ -59,7 +59,7 @@ async function getJson(job, path, values) {
     let data;
     try { data = await response.json(); }
     catch { throw new Error("応答を確認できませんでした。"); }
-    if (!response.ok) throw new Error(data.error || "取得できませんでした。");
+    if (!response.ok) throw new Error(response.status === 400 ? "正式な形式で入力してください" : "取得できませんでした。");
     return data;
   } catch (error) {
     if (controller.signal.aborted) throw new Error("取得が中断されたか、時間がかかりすぎています。");
