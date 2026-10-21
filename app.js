@@ -40,15 +40,10 @@ function isCurrent(job) {
 
 function progress(job) {
   if (!isCurrent(job)) return;
-  const all = [...job.entries.values()];
-  const loaded = all.filter(function (entry) { return entry.state === "loaded"; }).length;
-  const failed = all.filter(function (entry) { return entry.state === "error"; }).length;
-  document.getElementById("result-title").textContent = "ギャラリー " + job.gallery.id + " · " + all.length + "枚";
-  const listing = job.complete ? "" : "（一覧取得中 " + job.pagesRead + "/" + job.pageCount + "）";
-  showStatus("画像ページ " + all.length + "枚" + listing + " / 表示済み " + loaded + "枚" +
-    (failed ? " / 読み込み失敗 " + failed + "枚" : "") +
-    (job.listError ? "。一覧の取得が途中で止まりました：" + job.listError : ""),
-    failed || job.listError ? "error" : "");
+  const failed = [...job.entries.values()].filter(function (entry) { return entry.state === "error"; }).length;
+  if (job.listError) showStatus(job.listError, "error");
+  else if (failed) showStatus(failed + "枚の画像を読み込めませんでした。", "error");
+  else showStatus(job.complete ? "" : "読み込み中…");
 }
 
 async function getJson(job, path, values) {
@@ -181,20 +176,13 @@ function appendEntries(job, data) {
     image.hidden = true;
     const message = document.createElement("p");
     message.className = "image-message";
-    message.textContent = "表示位置が近づくと、大きな画像を読み込みます。";
+    message.hidden = true;
     const retry = document.createElement("button");
     retry.type = "button";
     retry.className = "retry";
     retry.textContent = "再読み込み";
     retry.hidden = true;
-    const caption = document.createElement("figcaption");
-    const source = document.createElement("a");
-    source.href = pageUrl.href;
-    source.target = "_blank";
-    source.rel = "noopener noreferrer";
-    source.textContent = dataEntry.index + "ページ目 · 元の画像ページ";
-    caption.append(source);
-    figure.append(image, message, retry, caption);
+    figure.append(image, message, retry);
     item.append(figure);
     const entry = { index: dataEntry.index, pageUrl: pageUrl.href, item, figure, image, message, retry, state: "waiting" };
     retry.addEventListener("click", function () { enqueue(job, entry); });
@@ -237,9 +225,8 @@ form.addEventListener("submit", async function (event) {
         }
       }, { rootMargin: "800px 0px" });
     }
-    document.getElementById("source").href = gallery.url;
     button.textContent = "取得中…";
-    showStatus("ギャラリーの画像一覧を取得しています。");
+    showStatus("読み込み中…");
     // 一覧の各ページを順に読む。画像ページの取得は表示位置に合わせて別のキューで進める。
     for (let page = 0; page < job.pageCount; page += 1) {
       const data = await getJson(job, "/api/images", { url: gallery.url, page: String(page) });

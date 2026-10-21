@@ -3,7 +3,9 @@ const SITE_ORIGIN = "https://shakemaru110.github.io";
 const GALLERY_ORIGIN = "https://e-hentai.org";
 
 class HttpError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, code, diagnostics) {
+    super(message); this.status = status; this.code = code; this.diagnostics = diagnostics;
+  }
 }
 
 function responseHeaders(origin) {
@@ -74,6 +76,35 @@ function tags(html, name) {
   return html.match(new RegExp("<" + name + "\\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", "gi")) || [];
 }
 
+function missingContent(html, kind) {
+  const text = decodeHtml(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]*>/g, " ")).trim();
+  const diagnostics = {
+    characters: html.length,
+    anchorCount: tags(html, "a").length,
+    imageCount: tags(html, "img").length,
+    hasGalleryContainer: /\bid\s*=\s*["']gdt["']/i.test(html),
+    hasMainImage: /\bid\s*=\s*["']img["']/i.test(html)
+  };
+  if (/your ip address[\s\S]{0,200}(?:banned|blocked)|temporarily banned|excessive page(?:loads| loads)|access denied|^\s*nope\.?\s*$/i.test(text)) {
+    return new HttpError(502, "取得先がサーバーからのアクセスを制限しています。", "UPSTREAM_BLOCKED", diagnostics);
+  }
+  if (/cf-chl-|challenge-platform|g-recaptcha|h-captcha/i.test(html) || /just a moment|verify (?:that )?you are human/i.test(text)) {
+    return new HttpError(502, "取得先でブラウザによる確認が必要なため、画像を取得できません。", "UPSTREAM_CHALLENGE", diagnostics);
+  }
+  if (/must be logged in|please (?:log|sign) in to|login required/i.test(text)) {
+    return new HttpError(422, "取得先へのログインが必要です。", "UPSTREAM_LOGIN_REQUIRED", diagnostics);
+  }
+  if (!text && !tags(html, "a").length && !tags(html, "img").length) {
+    return new HttpError(502, "取得先から空のページが返されました。", "UPSTREAM_EMPTY", diagnostics);
+  }
+  return new HttpError(422, kind === "gallery" ? "取得先のページから画像一覧を読み取れませんでした。" :
+    "取得先のページから本文画像を読み取れませんでした。",
+    kind === "gallery" ? "GALLERY_MARKUP_NOT_FOUND" : "IMAGE_MARKUP_NOT_FOUND", diagnostics);
+}
+
+
+
 function parseGallery(html, gallery, requestedPage) {
   const entries = new Map();
   let lastPage = requestedPage;
@@ -83,7 +114,8 @@ function parseGallery(html, gallery, requestedPage) {
     let url;
     try { url = new URL(href, gallery.url); }
     catch { continue; }
-    if (url.origin !== GALLERY_ORIGIN || url.username || url.password) continue;
+    if (url.hostname !== "e-hentai.org" || !["https:", "http:"].includes(url.protocol) || url.port || url.username || url.password) continue;
+    url.protocol = "https:";
     const imageMatch = url.pathname.match(/^\/s\/([a-f0-9]{10})\/(\d+)-([1-9]\d*)\/?$/i);
     if (imageMatch && imageMatch[2] === gallery.id) {
       const index = Number(imageMatch[3]);
@@ -99,7 +131,7 @@ function parseGallery(html, gallery, requestedPage) {
     }
   }
   if (!entries.size) {
-    throw new HttpError(422, "画像一覧が見つかりません。公開状態・ログイン要求・アクセス制限をご確認ください。");
+    throw missingContent(html, "gallery");
   }
   return { source: gallery.url, galleryId: gallery.id, page: requestedPage, pageCount: lastPage + 1,
     entries: [...entries.values()].sort(function (a, b) { return a.index - b.index; }) };
@@ -121,7 +153,7 @@ function checkedImageUrl(value) {
 function parseImage(html, page) {
   const mainImages = tags(html, "img").map(attributes).filter(function (attrs) { return attrs.get("id") === "img"; });
   if (mainImages.length !== 1 || !mainImages[0].get("src")) {
-    throw new HttpError(422, "本文画像が見つかりません。公開状態・ログイン要求・アクセス制限をご確認ください。");
+    throw missingContent(html, "image");
   }
   return { source: page.url, index: page.index, imageUrl: checkedImageUrl(mainImages[0].get("src")) };
 }
@@ -176,7 +208,8 @@ export default {
       }
       throw new HttpError(404, "指定した機能が見つかりませんでした。");
     } catch (error) {
-      return json({ error: error instanceof HttpError ? error.message : "画像リンクの取得中にエラーが発生しました。" },
+      return json({ error: error instanceof HttpError ? error.message : "画像リンクの取得中にエラーが発生しました。",
+        code: error.code, diagnostics: error.diagnostics },
         error instanceof HttpError ? error.status : 500, origin);
     }
   }

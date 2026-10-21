@@ -104,3 +104,41 @@ test("HTTPS image hosts may use their assigned nonstandard port", async () => {
   assert.equal(response.status, 200);
   assert.equal((await response.json()).imageUrl, "https://test.hath.network:61462/image.webp");
 });
+
+test("upstream HTTP links are normalized to HTTPS without accepting another host", async () => {
+  upstream('<a href="http://e-hentai.org/s/a6878039d4/4270520-1">main</a><a href="http://evil.invalid/s/a6878039d4/4270520-2">ad</a>');
+  const response = await request("/api/images?url=" + encodeURIComponent(gallery));
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).entries, [{ index: 1, pageUrl: first }]);
+});
+test("an upstream IP block is distinct from an empty gallery", async () => {
+  upstream("<html><body>Your IP address has been temporarily banned for excessive pageloads.</body></html>");
+  const response = await request("/api/images?url=" + encodeURIComponent(gallery));
+  assert.equal(response.status, 502);
+  const result = await response.json();
+  assert.equal(result.code, "UPSTREAM_BLOCKED");
+  assert.equal(result.diagnostics.hasGalleryContainer, false);
+  assert.ok(!JSON.stringify(result).includes("Your IP address"));
+});
+test("browser verification pages are diagnosed", async () => {
+  upstream('<html><title>Just a moment</title><script src="/cdn-cgi/challenge-platform/test"></script></html>');
+  const response = await request("/api/images?url=" + encodeURIComponent(gallery));
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).code, "UPSTREAM_CHALLENGE");
+});
+test("empty and unfamiliar pages have distinct diagnostics", async () => {
+  upstream("");
+  const empty = await request("/api/images?url=" + encodeURIComponent(gallery));
+  assert.equal(empty.status, 502);
+  assert.equal((await empty.json()).code, "UPSTREAM_EMPTY");
+  upstream("<html><p>A different page</p></html>");
+  const changed = await request("/api/images?url=" + encodeURIComponent(gallery));
+  assert.equal(changed.status, 422);
+  assert.equal((await changed.json()).code, "GALLERY_MARKUP_NOT_FOUND");
+});
+test("login requirements are diagnosed without reading credentials", async () => {
+  upstream("<html><p>You must be logged in to view this page.</p></html>");
+  const response = await request("/api/image?url=" + encodeURIComponent(first));
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).code, "UPSTREAM_LOGIN_REQUIRED");
+});
