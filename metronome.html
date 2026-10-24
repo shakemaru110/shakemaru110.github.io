@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metronome</title>
+  <link rel="stylesheet" href="./metronome.css">
+  <script src="./metronome-audio.js" defer></script>
+  <script src="./metronome.js" defer></script>
+</head>
+<body>
+  <main>
+    <nav aria-label="ナビゲーション"><a href="./index.html">ホームへ戻る</a></nav>
+    <h1>Metronome</h1>
+    <p class="intro">拍の芯と、その間のリズムを、自分のバランスで。</p>
+    <section class="panel transport" aria-label="再生とテンポ">
+      <div class="tempo-heading">
+        <label for="tempo">テンポ <span class="unit">BPM / 4分音符</span></label>
+        <span id="play-state" role="status">停止中</span>
+      </div>
+      <div class="tempo-controls">
+        <button id="tempo-down" type="button" aria-label="テンポを1下げる">−</button>
+        <input id="tempo" type="number" min="20" max="300" step="0.1" value="120" inputmode="decimal" aria-describedby="tempo-hint">
+        <button id="tempo-up" type="button" aria-label="テンポを1上げる">＋</button>
+      </div>
+      <input id="tempo-range" type="range" min="20" max="300" step="0.1" value="120" aria-label="テンポ">
+      <p id="tempo-hint" class="hint">20〜300 BPM。数値を直接入力できます。</p>
+      <div id="beat-display" class="beat-display" aria-label="拍の位置"></div>
+      <p id="position" class="position" aria-hidden="true">—</p>
+      <div class="actions">
+        <button id="toggle" class="primary" type="button" aria-pressed="false">再生</button>
+        <button id="tap" type="button">タップテンポ</button>
+      </div>
+      <p id="tap-status" class="hint" role="status"></p>
+      <p id="error" role="alert" hidden></p>
+    </section>
+    <section class="panel" aria-labelledby="rhythm-heading">
+      <h2 id="rhythm-heading">リズム</h2>
+      <div class="rhythm-controls">
+        <div>
+          <label for="beats">1小節の拍数</label>
+          <select id="beats">
+            <option value="1">1拍（1/4）</option>
+            <option value="2">2拍（2/4）</option>
+            <option value="3">3拍（3/4）</option>
+            <option value="4" selected>4拍（4/4）</option>
+            <option value="5">5拍（5/4）</option>
+            <option value="6">6拍（6/4）</option>
+            <option value="7">7拍（7/4）</option>
+            <option value="8">8拍（8/4）</option>
+            <option value="9">9拍（9/4）</option>
+            <option value="10">10拍（10/4）</option>
+            <option value="11">11拍（11/4）</option>
+            <option value="12">12拍（12/4）</option>
+            <option value="13">13拍（13/4）</option>
+            <option value="14">14拍（14/4）</option>
+            <option value="15">15拍（15/4）</option>
+            <option value="16">16拍（16/4）</option>
+          </select>
+        </div>
+        <div>
+          <label for="subdivision">1拍の細分化</label>
+          <select id="subdivision" aria-describedby="subdivision-hint">
+            <option value="1" selected>4分音符（1分割）</option>
+            <option value="2">8分音符（2分割）</option>
+            <option value="3">3連符（3分割）</option>
+            <option value="4">16分音符（4分割）</option>
+            <option value="5">5連符（5分割）</option>
+            <option value="6">6連符（6分割）</option>
+            <option value="8">32分音符（8分割）</option>
+          </select>
+        </div>
+        <div>
+          <label for="sound">音色</label>
+          <select id="sound">
+            <option value="click">クリック</option>
+            <option value="wood">ウッド</option>
+            <option value="beep">電子音</option>
+          </select>
+        </div>
+      </div>
+      <p id="subdivision-hint" class="hint">各拍は4分音符です。拍数・細分化の変更時は、小節の先頭から再生します。</p>
+      <label class="checkbox"><input id="accent" type="checkbox" checked> 小節の第1拍を高い音で強調</label>
+    </section>
+    <section class="panel" aria-labelledby="volume-heading">
+      <h2 id="volume-heading">音量バランス</h2>
+      <div class="volume-control">
+        <label for="onbeat-volume">オンビート <span>4分音符の位置</span></label>
+        <output id="onbeat-value" for="onbeat-volume">80%</output>
+        <input id="onbeat-volume" type="range" min="0" max="100" value="80">
+      </div>
+      <div class="volume-control offbeat">
+        <label for="offbeat-volume">オフビート <span>拍と拍の間の音</span></label>
+        <output id="offbeat-value" for="offbeat-volume">40%</output>
+        <input id="offbeat-volume" type="range" min="0" max="100" value="40">
+      </div>
+      <p id="offbeat-hint" class="hint">8分音符以上の細分化を選ぶと、オフビートが鳴ります。</p>
+      <div class="volume-control master">
+        <label for="master-volume">全体音量</label>
+        <output id="master-value" for="master-volume">70%</output>
+        <input id="master-volume" type="range" min="0" max="100" value="70">
+      </div>
+      <p class="hint">各音量は再生中も変更できます。0%で消音。拍頭にもオンビートの音量が適用されます。</p>
+    </section>
+    <p class="hint footer-note">設定はこのブラウザに保存されます。スマートフォンの画面ロック中は再生が止まる場合があります。</p>
+    <p class="hint">参考：<a href="https://tateita.com/web_audio_metronome.html" target="_blank" rel="noopener noreferrer">Web Audio メトロノーム / tateita.com</a></p>
+    <noscript><p>メトロノームを使うにはJavaScriptを有効にしてください。</p></noscript>
+  </main>
+</body>
+</html>
