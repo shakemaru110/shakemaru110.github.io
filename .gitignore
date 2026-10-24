@@ -1,2 +1,7 @@
 /node_modules/
 /.wrangler/
+/desktop/bin/
+/desktop/obj/
+/desktop/.packages/
+/desktop/.dotnet/
+/desktop/artifacts/

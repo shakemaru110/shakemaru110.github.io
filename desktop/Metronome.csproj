@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Metronome</AssemblyName>
+    <RootNamespace>Metronome</RootNamespace>
+    <Version>1.0.0</Version>
+    <Product>Metronome</Product>
+    <Description>オンビート・オフビートの音量を個別に設定できるメトロノーム</Description>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <AllowedReferenceRelatedFileExtensions>.pdb</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <EmbeddedResource Include="../metronome.html" LogicalName="Metronome.Web.metronome.html" />
+    <EmbeddedResource Include="../metronome.css" LogicalName="Metronome.Web.metronome.css" />
+    <EmbeddedResource Include="../metronome.js" LogicalName="Metronome.Web.metronome.js" />
+    <EmbeddedResource Include="../metronome-audio.js" LogicalName="Metronome.Web.metronome-audio.js" />
+    <EmbeddedResource Include="tests/smoke.js" LogicalName="Metronome.Tests.smoke.js" />
+  </ItemGroup>
+  <!-- The SDK adds WPF unconditionally; this app uses only WinForms. -->
+  <Target Name="RemoveUnusedWebView2WpfReference" BeforeTargets="ResolveAssemblyReferences">
+    <ItemGroup>
+      <Reference Remove="@(Reference)" Condition="'%(Reference.Filename)' == 'Microsoft.Web.WebView2.Wpf'" />
+    </ItemGroup>
+  </Target>
+</Project>

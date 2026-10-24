@@ -12,19 +12,24 @@
   <main>
     <nav aria-label="ナビゲーション"><a href="./index.html">ホームへ戻る</a></nav>
     <h1>Metronome</h1>
-    <p class="intro">拍の芯と、その間のリズムを、自分のバランスで。</p>
     <section class="panel transport" aria-label="再生とテンポ">
       <div class="tempo-heading">
-        <label for="tempo">テンポ <span class="unit">BPM / 4分音符</span></label>
+        <label for="tempo">BPM</label>
         <span id="play-state" role="status">停止中</span>
       </div>
       <div class="tempo-controls">
-        <button id="tempo-down" type="button" aria-label="テンポを1下げる">−</button>
+        <button id="tempo-down" type="button" data-tempo-change="-1" aria-label="テンポを1下げる">−1</button>
         <input id="tempo" type="number" min="20" max="300" step="0.1" value="120" inputmode="decimal" aria-describedby="tempo-hint">
-        <button id="tempo-up" type="button" aria-label="テンポを1上げる">＋</button>
+        <button id="tempo-up" type="button" data-tempo-change="1" aria-label="テンポを1上げる">＋1</button>
       </div>
-      <input id="tempo-range" type="range" min="20" max="300" step="0.1" value="120" aria-label="テンポ">
-      <p id="tempo-hint" class="hint">20〜300 BPM。数値を直接入力できます。</p>
+      <div class="tempo-adjustments" role="group" aria-label="テンポを5・10ずつ調整">
+        <button type="button" data-tempo-change="-10" aria-label="テンポを10下げる">−10</button>
+        <button type="button" data-tempo-change="-5" aria-label="テンポを5下げる">−5</button>
+        <button type="button" data-tempo-change="5" aria-label="テンポを5上げる">＋5</button>
+        <button type="button" data-tempo-change="10" aria-label="テンポを10上げる">＋10</button>
+      </div>
+      <input id="tempo-range" type="range" min="20" max="300" step="1" value="120" aria-label="テンポ">
+      <p id="tempo-hint" class="hint">20〜300 BPM。手入力は小数点第1位まで、スライダー・タップテンポは整数で設定できます。</p>
       <div id="beat-display" class="beat-display" aria-label="拍の位置"></div>
       <p id="position" class="position" aria-hidden="true">—</p>
       <div class="actions">

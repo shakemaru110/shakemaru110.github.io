@@ -90,26 +90,29 @@
     else start();
   });
 
-  function setTempo(value) {
+  function setTempo(value, allowDecimal = false) {
     if (!Number.isFinite(value)) value = settings.tempo;
-    engine.setTempo(Math.round(Math.max(20, Math.min(300, value)) * 10) / 10);
+    const precision = allowDecimal ? 10 : 1;
+    engine.setTempo(Math.round(Math.max(20, Math.min(300, value)) * precision) / precision);
     tempo.value = settings.tempo;
-    tempoRange.value = settings.tempo;
+    tempoRange.value = Math.round(settings.tempo);
     save();
   }
-  tempo.value = tempoRange.value = settings.tempo;
+  tempo.value = settings.tempo;
+  tempoRange.value = Math.round(settings.tempo);
   tempo.addEventListener("input", () => {
     if (tempo.value !== "" && tempo.validity.valid) {
       engine.setTempo(tempo.valueAsNumber);
-      tempoRange.value = settings.tempo;
+      tempoRange.value = Math.round(settings.tempo);
       save();
     }
   });
-  tempo.addEventListener("change", () => setTempo(tempo.valueAsNumber));
-  tempo.addEventListener("blur", () => setTempo(tempo.value === "" ? settings.tempo : tempo.valueAsNumber));
+  tempo.addEventListener("change", () => setTempo(tempo.valueAsNumber, true));
+  tempo.addEventListener("blur", () => setTempo(tempo.value === "" ? settings.tempo : tempo.valueAsNumber, true));
   tempoRange.addEventListener("input", () => setTempo(Number(tempoRange.value)));
-  byId("tempo-down").addEventListener("click", () => setTempo(settings.tempo - 1));
-  byId("tempo-up").addEventListener("click", () => setTempo(settings.tempo + 1));
+  document.querySelectorAll("[data-tempo-change]").forEach(button => {
+    button.addEventListener("click", () => setTempo(settings.tempo + Number(button.dataset.tempoChange)));
+  });
 
   function updateOffbeatHint() {
     byId("offbeat-hint").textContent = settings.subdivision === 1
