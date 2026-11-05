@@ -17,7 +17,7 @@
   function valid(key, value) {
     if (key === "tempo") return Number.isFinite(value) && value >= 20 && value <= 300;
     if (key === "beats") return Number.isInteger(value) && value >= 1 && value <= 16;
-    if (key === "subdivision") return [1, 2, 3, 4, 5, 6, 8].includes(value);
+    if (key === "subdivision") return [0.25, 0.5, 1, 2, 3, 4, 5, 6, 8, "bars-2", "bars-4", "bars-8"].includes(value);
     if (key === "sound") return ["click", "wood", "beep"].includes(value);
     if (key === "accent") return typeof value === "boolean";
     return Number.isFinite(value) && value >= 0 && value <= 100;
@@ -56,8 +56,13 @@
     [...beatDisplay.children].forEach((beat, i) => {
       beat.classList.toggle("active", i === tick.beat);
       beat.classList.toggle("off", i === tick.beat && !tick.onbeat);
+      beat.classList.toggle("silent", i === tick.beat && !tick.audible);
     });
-    byId("position").textContent = `${tick.beat + 1}拍目 · ${tick.part + 1} / ${settings.subdivision}`;
+    const pattern = window.MetronomeAudio.rhythm(settings.subdivision, settings.beats);
+    byId("position").textContent = pattern.divisions > 1
+      ? `${tick.beat + 1}拍目 · ${tick.part + 1} / ${pattern.divisions}`
+      : (pattern.bars > 1 ? `${tick.bar + 1} / ${pattern.bars}小節 · ` : "")
+        + `${tick.beat + 1}拍目` + (pattern.pulseEvery > 1 ? (tick.audible ? " · 発音" : " · 休符") : "");
   }, () => {
     resetTransport();
     playState.textContent = "音声が中断されました。再生で再開できます。";
@@ -115,9 +120,12 @@
   });
 
   function updateOffbeatHint() {
-    byId("offbeat-hint").textContent = settings.subdivision === 1
-      ? "4分音符ではオフビートは鳴りません。8分音符以上の細分化を選んでください。"
-      : `1拍につきオンビート1音、オフビート${settings.subdivision - 1}音を鳴らします。`;
+    const pattern = window.MetronomeAudio.rhythm(settings.subdivision, settings.beats);
+    byId("offbeat-hint").textContent = pattern.pulseEvery > 1
+      ? `${pattern.pulseEvery}拍に1回、オンビートの音量で鳴らします。オフビートは鳴りません。`
+      : pattern.divisions === 1
+        ? "4分音符ではオフビートは鳴りません。8分音符以上の細分化を選んでください。"
+        : `1拍につきオンビート1音、オフビート${pattern.divisions - 1}音を鳴らします。`;
   }
   for (const key of ["beats", "subdivision", "sound", "accent"]) {
     const control = byId(key);
@@ -126,7 +134,9 @@
     control.addEventListener("change", () => {
       const restart = engine.playing && ["beats", "subdivision"].includes(key);
       if (restart) engine.stop();
-      settings[key] = key === "accent" ? control.checked : key === "sound" ? control.value : Number(control.value);
+      settings[key] = key === "accent" ? control.checked
+        : key === "sound" || (key === "subdivision" && control.value.startsWith("bars-"))
+          ? control.value : Number(control.value);
       drawBeats();
       updateOffbeatHint();
       save();

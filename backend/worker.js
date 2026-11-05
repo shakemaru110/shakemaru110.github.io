@@ -1,5 +1,7 @@
 ﻿import { createReaderAdapter } from "./reader.js";
 
+import { createGalleryGateway } from "./gallery-gateway.js";
+
 const SITE_ORIGIN = "https://shakemaru110.github.io";
 const GALLERY_ORIGIN = "https://e-hentai.org";
 
@@ -26,6 +28,7 @@ function responseHeaders(origin) {
 function json(data, status, origin) {
   const headers = responseHeaders(origin);
   headers.set("Content-Type", "application/json; charset=utf-8");
+  if (Number.isSafeInteger(data.retryAfter) && data.retryAfter > 0) headers.set("Retry-After", String(data.retryAfter));
   return new Response(JSON.stringify(data), { status, headers });
 }
 
@@ -86,8 +89,8 @@ function missingContent(html, kind) {
     hasGalleryContainer: /\bid\s*=\s*["']gdt["']/i.test(html),
     hasMainImage: /\bid\s*=\s*["']img["']/i.test(html)
   };
-  if (/your ip address[\s\S]{0,200}(?:banned|blocked)|temporarily banned|excessive page(?:loads| loads)|access denied|^\s*nope\.?\s*$/i.test(text)) {
-    return new HttpError(502, "アクセスが制限されています。", "UPSTREAM_BLOCKED", diagnostics);
+  if (/your ip address[\s\S]{0,200}(?:banned|blocked)|temporarily banned|excessive page(?:loads| loads)|opening pages too fast|access denied|^\s*nope\.?\s*$/i.test(text)) {
+    return new HttpError(502, "取得元サイトが画像取得サーバーからのアクセスを制限しています。時間をおいて再度お試しください。", "UPSTREAM_BLOCKED", diagnostics);
   }
   if (/cf-chl-|challenge-platform|g-recaptcha|h-captcha/i.test(html) || /just a moment|verify (?:that )?you are human/i.test(text)) {
     return new HttpError(502, "確認が必要なため、取得できませんでした。", "UPSTREAM_CHALLENGE", diagnostics);
@@ -171,7 +174,14 @@ async function fetchHtml(url) {
     throw new HttpError(502, "接続できませんでした。時間をおいて再度お試しください。");
   }
   if (!response.ok) {
-    throw new HttpError(502, "取得できませんでした。");
+    const blocked = [403, 429].includes(response.status);
+    const error = new HttpError(502, blocked
+      ? "取得元サイトが画像取得サーバーからのアクセスを制限しています。時間をおいて再度お試しください。"
+      : "取得元サイトから正常な応答がありませんでした。", blocked ? "UPSTREAM_BLOCKED" : "UPSTREAM_HTTP_ERROR",
+      { upstreamStatus: response.status });
+    const retry = response.headers.get("Retry-After");
+    if (retry && /^\d+$/.test(retry) && Number.isSafeInteger(Number(retry))) error.retryAfter = Math.min(86400, Number(retry));
+    throw error;
   }
   const type = response.headers.get("Content-Type") || "";
   if (!/text\/html/i.test(type)) {
@@ -186,7 +196,9 @@ const reader = createReaderAdapter(function (status) {
   return new HttpError(status, status === 400 ? "正式な形式で入力してください" : "取得できませんでした。");
 });
 
-export default {
+export function createWorker(options) {
+  const galleryGateway = createGalleryGateway(options);
+  return {
   async fetch(request) {
     const origin = request.headers.get("Origin");
     if (origin && !responseHeaders(origin).has("Access-Control-Allow-Origin")) {
@@ -205,14 +217,18 @@ export default {
         }
         const page = Number(pageValue);
         if (source) return json(await reader.list(source, page), 200, origin);
-        const html = await fetchHtml(gallery.url + (page ? "?p=" + page : ""));
-        return json(parseGallery(html, gallery, page), 200, origin);
+        const data = await galleryGateway.load("list:" + gallery.url + ":" + page,
+          async () => parseGallery(await fetchHtml(gallery.url + (page ? "?p=" + page : "")), gallery, page));
+        return json(data, 200, origin);
       }
       if (endpoint.pathname === "/api/image") {
         const source = reader.parse(endpoint.searchParams.get("url"));
         if (source) return json(await reader.image(source), 200, origin);
         const page = imagePageFrom(endpoint.searchParams.get("url"));
-        return json(parseImage(await fetchHtml(page.url), page), 200, origin);
+        const data = await galleryGateway.load("image:" + page.url,
+          async () => parseImage(await fetchHtml(page.url), page),
+          { ttl: 120000, refresh: endpoint.searchParams.get("refresh") === "1" });
+        return json(data, 200, origin);
       }
       if (endpoint.pathname === "/api/content") {
         const source = reader.parse(endpoint.searchParams.get("url"));
@@ -222,8 +238,11 @@ export default {
       throw new HttpError(404, "見つかりませんでした。");
     } catch (error) {
       return json({ error: error instanceof HttpError ? error.message : "処理中にエラーが発生しました。",
-        code: error.code, diagnostics: error.diagnostics },
+        code: error.code, diagnostics: error.diagnostics, retryAfter: error.retryAfter },
         error instanceof HttpError ? error.status : 500, origin);
     }
   }
-};
+  };
+}
+
+export default createWorker();

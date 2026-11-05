@@ -169,12 +169,20 @@ internal sealed class MetronomeWindow : Form
         finally { browser.CoreWebView2.WebMessageReceived -= OnMessage; }
         if (!result.GetProperty("success").GetBoolean()) throw new InvalidOperationException(result.ToString());
         await Navigate(() => browser.CoreWebView2.Reload());
-        string persisted = await browser.CoreWebView2.ExecuteScriptAsync("document.getElementById('tempo').value === '123' && document.getElementById('offbeat-volume').value === '65'");
+        string persisted = await browser.CoreWebView2.ExecuteScriptAsync("document.getElementById('tempo').value === '123' && document.getElementById('offbeat-volume').value === '65' && document.getElementById('subdivision').value === 'bars-8'");
         if (persisted != "true") throw new InvalidOperationException("Settings did not persist after reload.");
+        foreach (string subdivision in new[] { "0.5", "0.25", "bars-2", "bars-4", "bars-8" })
+        {
+            string value = JsonSerializer.Serialize(subdivision);
+            await browser.CoreWebView2.ExecuteScriptAsync($"document.getElementById('subdivision').value = {value}; document.getElementById('subdivision').dispatchEvent(new Event('change'));");
+            await Navigate(() => browser.CoreWebView2.Reload());
+            string restored = await browser.CoreWebView2.ExecuteScriptAsync($"document.getElementById('subdivision').value === {value}");
+            if (restored != "true") throw new InvalidOperationException("Rhythm did not persist after reload: " + subdivision);
+        }
         using var image = File.Create(Path.ChangeExtension(reportPath!, ".png"));
         await browser.CoreWebView2.CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, image);
         WriteReport(new { success = true, architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-            runtime = environment!.BrowserVersionString, persistenceAfterReload = true, tests = result });
+            runtime = environment!.BrowserVersionString, persistenceAfterReload = true, sparseRhythmPersistenceAfterReload = true, tests = result });
         Close();
     }
 

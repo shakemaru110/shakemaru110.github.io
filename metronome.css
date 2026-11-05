@@ -26,6 +26,7 @@ input[type="range"] { display: block; width: 100%; margin: 12px 0; accent-color:
 .beat.first { border-color: #245bd6; }
 .beat.active { background: #245bd6; color: white; border-color: #245bd6; }
 .beat.active.off { background: #007c78; border-color: #007c78; }
+.beat.active.silent { background: #edf2ff; color: #245bd6; border-color: #245bd6; }
 .position { text-align: center; color: #586477; min-height: 1.5em; margin: 12px 0 20px; font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 12px; }
 .actions button { flex: 1; }

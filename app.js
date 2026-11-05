@@ -47,6 +47,40 @@ function isCurrent(job) {
   return activeJob === job && !job.controller.signal.aborted;
 }
 
+function pauseRequests(job, message) {
+  if (!isCurrent(job)) return;
+  job.paused = true;
+  job.listError = message;
+  job.queue.length = 0;
+  job.observer?.disconnect();
+  job.timers.forEach(clearTimeout);
+  job.timers.clear();
+  for (const entry of job.entries.values()) {
+    if (entry.state === "loaded") continue;
+    entry.state = "error";
+    entry.image.onload = null;
+    entry.image.onerror = null;
+    entry.image.removeAttribute("src");
+    entry.item.hidden = true;
+    entry.retry.hidden = true;
+  }
+  showStatus(message, "error");
+}
+
+function apiFailure(data, responseStatus) {
+  const messages = {
+    UPSTREAM_BLOCKED: "取得元サイトが画像取得サーバーからのアクセスを制限しています。時間をおいてURLを再送信してください。",
+    UPSTREAM_CHALLENGE: "取得元サイトで確認が必要なため、画像取得サーバーから読み込めません。",
+    UPSTREAM_LOGIN_REQUIRED: "取得元サイトへのログインが必要なため、読み込めません。",
+    UPSTREAM_EMPTY: "取得元サイトから空の応答が返されました。時間をおいて再度お試しください。",
+    UPSTREAM_HTTP_ERROR: "取得元サイトから正常な応答がありませんでした。時間をおいて再度お試しください。"
+  };
+  const code = typeof data?.code === "string" ? data.code : "";
+  const message = responseStatus === 400 ? "正式な形式で入力してください"
+    : messages[code] || (typeof data?.error === "string" && data.error.length <= 200 ? data.error : "取得できませんでした。");
+  return Object.assign(new Error(message), { code });
+}
+
 function progress(job) {
   if (!isCurrent(job)) return;
   const failed = [...job.entries.values()].filter(function (entry) { return entry.state === "error"; }).length;
@@ -68,7 +102,11 @@ async function getJson(job, path, values) {
     let data;
     try { data = await response.json(); }
     catch { throw new Error("応答を確認できませんでした。"); }
-    if (!response.ok) throw new Error(response.status === 400 ? "正式な形式で入力してください" : "取得できませんでした。");
+    if (!response.ok) {
+      const error = apiFailure(data, response.status);
+      if (["UPSTREAM_BLOCKED", "UPSTREAM_CHALLENGE", "UPSTREAM_LOGIN_REQUIRED"].includes(error.code)) pauseRequests(job, error.message);
+      throw error;
+    }
     return data;
   } catch (error) {
     if (controller.signal.aborted) throw new Error("取得が中断されたか、時間がかかりすぎています。");
@@ -99,7 +137,7 @@ function validImageUrl(value, job, entry) {
 
 
 function failEntry(job, entry, message) {
-  if (!isCurrent(job)) return;
+  if (!isCurrent(job) || job.paused) return;
   entry.state = "error";
   entry.image.removeAttribute("src");
   entry.image.hidden = true;
@@ -118,9 +156,9 @@ async function resolveEntry(job, entry) {
   try {
     const data = entry.imageUrl && entry.attempts === 0
       ? { source: entry.pageUrl, index: entry.index, imageUrl: entry.imageUrl }
-      : await getJson(job, "/api/image", { url: entry.pageUrl });
+      : await getJson(job, "/api/image", { url: entry.pageUrl, ...(entry.attempts ? { refresh: "1" } : {}) });
     entry.attempts += 1;
-    if (!isCurrent(job)) return;
+    if (!isCurrent(job) || job.paused) return;
     if (data.source !== entry.pageUrl || data.index !== entry.index) {
       throw new Error("応答を確認できませんでした。");
     }
@@ -151,7 +189,7 @@ async function resolveEntry(job, entry) {
 }
 
 function pump(job) {
-  if (!isCurrent(job)) return;
+  if (!isCurrent(job) || job.paused) return;
   while (job.running < 2 && job.queue.length) {
     const entry = job.queue.shift();
     job.running += 1;
@@ -160,7 +198,7 @@ function pump(job) {
 }
 
 function enqueue(job, entry) {
-  if (!isCurrent(job) || !["waiting", "error"].includes(entry.state)) return;
+  if (!isCurrent(job) || job.paused || !["waiting", "error"].includes(entry.state)) return;
   entry.state = "queued";
   job.queue.push(entry);
   pump(job);
@@ -244,7 +282,7 @@ form.addEventListener("submit", async function (event) {
     const gallery = parseGallery(input.value);
     job = { gallery, apiBase: apiBase(), controller: new AbortController(), entries: new Map(),
       byItem: new WeakMap(), timers: new Set(), queue: [], running: 0, observer: null,
-      pageCount: 1, pagesRead: 0, complete: false, listError: "" };
+      pageCount: 1, pagesRead: 0, complete: false, listError: "", paused: false };
     activeJob = job;
     if ("IntersectionObserver" in window) {
       job.observer = new IntersectionObserver(function (entries) {
@@ -260,7 +298,7 @@ form.addEventListener("submit", async function (event) {
     showStatus("読み込み中…");
     for (let page = 0; page < job.pageCount; page += 1) {
       const data = await getJson(job, "/api/images", { url: gallery.url, page: String(page) });
-      if (!isCurrent(job)) return;
+      if (!isCurrent(job) || job.paused) return;
       if (data.page !== page) throw new Error("応答を確認できませんでした。");
       appendEntries(job, data);
       job.pageCount = Math.max(job.pageCount, data.pageCount);

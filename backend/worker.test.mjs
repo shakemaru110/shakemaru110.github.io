@@ -1,8 +1,11 @@
 ﻿import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
-import worker from "./worker.js";
+import { beforeEach } from "node:test";
+import { createWorker } from "./worker.js";
 
 const nativeFetch = globalThis.fetch;
+let worker;
+beforeEach(() => { worker = createWorker({ interval: 0 }); });
 afterEach(() => { globalThis.fetch = nativeFetch; });
 const gallery = "https://e-hentai.org/g/1234567/0123456789/";
 const first = "https://e-hentai.org/s/1111111111/1234567-1";
@@ -141,4 +144,45 @@ test("case 17", async () => {
   const response = await request("/api/image?url=" + encodeURIComponent(first));
   assert.equal(response.status, 422);
   assert.equal((await response.json()).code, "UPSTREAM_LOGIN_REQUIRED");
+});
+
+test("gallery list cache coalesces duplicate requests", async () => {
+  let calls = 0;
+  upstream('<a href="' + first + '">image</a>', () => calls++);
+  const path = "/api/images?url=" + encodeURIComponent(gallery);
+  const responses = await Promise.all([request(path), request(path)]);
+  assert.ok(responses.every(response => response.status === 200));
+  assert.equal((await request(path)).status, 200);
+  assert.equal(calls, 1);
+});
+
+test("image retry can refresh an expired image URL", async () => {
+  let calls = 0;
+  upstream('<img id="img" src="https://test.hath.network/image.jpg">', () => calls++);
+  const path = "/api/image?url=" + encodeURIComponent(first);
+  assert.equal((await request(path)).status, 200);
+  assert.equal((await request(path)).status, 200);
+  assert.equal(calls, 1);
+  assert.equal((await request(path + "&refresh=1")).status, 200);
+  assert.equal(calls, 2);
+});
+
+test("upstream ban stops repeated requests and returns retry information", async () => {
+  let calls = 0;
+  upstream("<p>Your IP address has been temporarily banned for excessive pageloads.</p>", () => calls++);
+  const firstResponse = await request("/api/images?url=" + encodeURIComponent(gallery));
+  assert.equal(firstResponse.status, 502);
+  assert.equal(firstResponse.headers.get("Retry-After"), "900");
+  const blockedImage = await request("/api/image?url=" + encodeURIComponent(first));
+  assert.equal((await blockedImage.json()).code, "UPSTREAM_BLOCKED");
+  assert.equal(calls, 1);
+});
+
+test("HTTP 429 honors upstream Retry-After", async () => {
+  globalThis.fetch = async () => new Response("limit", { status: 429, headers: { "Retry-After": "30" } });
+  const response = await request("/api/images?url=" + encodeURIComponent(gallery));
+  const data = await response.json();
+  assert.equal(data.code, "UPSTREAM_BLOCKED");
+  assert.equal(data.retryAfter, 30);
+  assert.equal(data.diagnostics.upstreamStatus, 429);
 });

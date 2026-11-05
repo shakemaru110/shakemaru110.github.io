@@ -8,9 +8,25 @@ window.MetronomeAudio = (() => {
     beep: { type: "sine", frequency: 880, duration: 0.06, peak: 0.65 }
   };
 
+  function rhythm(subdivision, beats) {
+    const bars = { "bars-2": 2, "bars-4": 4, "bars-8": 8 }[subdivision];
+    if (bars) return { divisions: 1, pulseEvery: beats * bars, steps: beats * bars, bars };
+    if (subdivision < 1) {
+      const pulseEvery = 1 / subdivision;
+      let a = beats, b = pulseEvery;
+      while (b) [a, b] = [b, a % b];
+      // Use a full common cycle so long notes stay aligned across odd-length bars.
+      return { divisions: 1, pulseEvery, steps: beats * pulseEvery / a, bars: 1 };
+    }
+    return { divisions: subdivision, pulseEvery: 1, steps: beats * subdivision, bars: 1 };
+  }
+
   function position(step, subdivision, beats) {
-    const onbeat = step % subdivision === 0;
-    return { onbeat, accent: step === 0, beat: Math.floor(step / subdivision) % beats };
+    const pattern = rhythm(subdivision, beats);
+    const part = step % pattern.divisions;
+    const beat = Math.floor(step / pattern.divisions) % beats;
+    return { onbeat: part === 0, accent: beat === 0 && part === 0, beat, part,
+      bar: Math.floor(step / (beats * pattern.divisions)), audible: step % pattern.pulseEvery === 0 };
   }
 
   function click(context, destination, time, sound, accent) {
@@ -74,8 +90,9 @@ window.MetronomeAudio = (() => {
 
     setTempo(value) {
       if (this.playing) {
-        // Recalculate the next interval, including when the old tempo was very slow.
-        this.nextTime += (60 / value - 60 / this.settings.tempo) / this.settings.subdivision;
+        // Preserve progress through the current interval; already queued sounds keep their time.
+        const anchor = Math.max(this.context.currentTime, this.lastScheduledTime ?? -Infinity);
+        this.nextTime = anchor + Math.max(0, this.nextTime - anchor) * this.settings.tempo / value;
       }
       this.settings.tempo = value;
     }
@@ -88,6 +105,7 @@ window.MetronomeAudio = (() => {
       if (this.context.state !== "running") throw new Error("音声を開始できませんでした。再生ボタンをもう一度押してください。");
       this.playing = true;
       this.step = 0;
+      this.lastScheduledTime = null;
       this.nextTime = this.context.currentTime + 0.05;
       this.updateVolumes(true);
       this.schedule();
@@ -99,8 +117,9 @@ window.MetronomeAudio = (() => {
     schedule() {
       if (!this.playing) return;
       const now = this.context.currentTime;
-      const duration = 60 / this.settings.tempo / this.settings.subdivision;
-      const steps = this.settings.beats * this.settings.subdivision;
+      const pattern = rhythm(this.settings.subdivision, this.settings.beats);
+      const duration = 60 / this.settings.tempo / pattern.divisions;
+      const steps = pattern.steps;
       // Skip missed subdivisions after throttling rather than playing them in a burst.
       if (this.nextTime < now) {
         const skipped = Math.ceil((now + 0.01 - this.nextTime) / duration);
@@ -111,11 +130,15 @@ window.MetronomeAudio = (() => {
       while (this.visuals.length > 1 && this.visuals[1].time <= now) this.visuals.shift();
       while (this.nextTime < now + 0.12) {
         const tick = position(this.step, this.settings.subdivision, this.settings.beats);
-        const source = click(this.context, tick.onbeat ? this.onbeat : this.offbeat,
-          this.nextTime, this.settings.sound, tick.accent && this.settings.accent);
-        this.sources.add(source);
-        source.addEventListener("ended", () => this.sources.delete(source), { once: true });
-        this.visuals.push({ ...tick, part: this.step % this.settings.subdivision, time: this.nextTime });
+        if (tick.audible) {
+          const source = click(this.context, tick.onbeat ? this.onbeat : this.offbeat,
+            this.nextTime, this.settings.sound, tick.accent && this.settings.accent);
+          this.sources.add(source);
+          source.addEventListener("ended", () => this.sources.delete(source), { once: true });
+        }
+        // Silent quarter notes still advance the visual beat and the long rhythm's phase.
+        this.visuals.push({ ...tick, time: this.nextTime });
+        this.lastScheduledTime = this.nextTime;
         this.step = (this.step + 1) % steps;
         this.nextTime += duration;
       }
@@ -148,5 +171,5 @@ window.MetronomeAudio = (() => {
     }
   }
 
-  return { Engine, position, click };
+  return { Engine, position, rhythm, click };
 })();
