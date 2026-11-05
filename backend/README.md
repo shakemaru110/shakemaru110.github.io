@@ -26,10 +26,30 @@ GitHub Pagesの`gallery.html`から、`config.js`に設定したCloudflare Worke
 
 取得元の説明: [EHWiki: Technical Issues](https://ehwiki.org/wiki/Technical_Issues)
 
+## APIのアクセス制限時の縦表示
+
+`gallery.html`でURLを送信すると、最初は従来のAPI経由で取得します。e-hentai.orgの取得が`UPSTREAM_BLOCKED`で停止した場合だけ、ブックマークレットの案内を表示します。正常時・単なる接続失敗・他サービスのURLでは案内を表示しません。再送信すると一度案内を閉じ、APIで再試行します。
+
+1. 案内の「ギャラリーを縦表示」をPCブラウザのブックマークバーにドラッグして登録します（初回のみ）。
+2. 「元サイトで開く」を押します。
+3. 元サイトのギャラリーが表示されたら、登録したブックマークを押します。
+
+表示処理は元サイトのページ上で実行します。画像ページのHTMLはブラウザから同一オリジンで読み取り、画像は取得元の配信先から直接表示します。Cloudflare Worker、外部プロキシ、追加のスクリプト配信にはアクセスしません。ログインが必要な場合は元サイトで先にログインします。元サイト側でもアクセス制限が返った場合は停止します。
+
+スクロール付近の画像と次の一覧ページを順番に読み込みます。HTMLへのアクセス間隔は最低1秒です。「元のページへ戻る」またはEscで終了できます。登録したブックマークはコードを内蔵するので、機能更新時は登録し直してください。PC版Chromeで、実画像を取得しないテスト用ページ・画像を使って検証しています。
+
+GitHub Pages上のページから元サイトのHTMLをそのまま読むことは[同一オリジンポリシー](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Same-origin_policy)の制限を受けるため、実行場所を元サイトにしています。元サイト自体で表示できない画像を取得する機能ではありません。
+
 ## テスト
 
 Node.js 24で実行できます。通常のテストから実サイトへはアクセスしません。
 
 ```powershell
 node --test backend/worker.test.mjs backend/reader.test.mjs backend/gallery-gateway.test.mjs backend/app.test.mjs
+```
+
+ブックマークレットのブラウザ検証にはChromeとNode.js 24を使用します。Chromeが既定のパスにない場合は`CHROME_PATH`に実行ファイルを指定します。通信はテスト用応答に差し替え、実サイト・実画像にはアクセスしません。
+
+```powershell
+node --test backend/gallery-direct.browser.test.mjs
 ```

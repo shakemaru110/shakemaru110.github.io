@@ -6,6 +6,7 @@ const button = document.getElementById("enter");
 const status = document.getElementById("status");
 const results = document.getElementById("results");
 const images = document.getElementById("images");
+const directHelp = document.getElementById("direct-help");
 let activeJob = null;
 
 function showStatus(message, state) {
@@ -47,7 +48,7 @@ function isCurrent(job) {
   return activeJob === job && !job.controller.signal.aborted;
 }
 
-function pauseRequests(job, message) {
+function pauseRequests(job, message, code) {
   if (!isCurrent(job)) return;
   job.paused = true;
   job.listError = message;
@@ -65,6 +66,7 @@ function pauseRequests(job, message) {
     entry.retry.hidden = true;
   }
   showStatus(message, "error");
+  if (directHelp && job.gallery.kind === "gallery" && code === "UPSTREAM_BLOCKED") directHelp.hidden = false;
 }
 
 function apiFailure(data, responseStatus) {
@@ -104,7 +106,7 @@ async function getJson(job, path, values) {
     catch { throw new Error("応答を確認できませんでした。"); }
     if (!response.ok) {
       const error = apiFailure(data, response.status);
-      if (["UPSTREAM_BLOCKED", "UPSTREAM_CHALLENGE", "UPSTREAM_LOGIN_REQUIRED"].includes(error.code)) pauseRequests(job, error.message);
+      if (["UPSTREAM_BLOCKED", "UPSTREAM_CHALLENGE", "UPSTREAM_LOGIN_REQUIRED"].includes(error.code)) pauseRequests(job, error.message, error.code);
       throw error;
     }
     return data;
@@ -269,6 +271,9 @@ function appendEntries(job, data) {
 
 form.addEventListener("submit", async function (event) {
   event.preventDefault();
+  if (directHelp) directHelp.hidden = true;
+  const directStatus = document.getElementById("direct-status");
+  if (directStatus) directStatus.textContent = "";
   if (activeJob) {
     activeJob.controller.abort();
     activeJob.observer?.disconnect();

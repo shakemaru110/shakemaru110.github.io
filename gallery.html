@@ -25,11 +25,19 @@
     figure.pending { min-height: 65vh; display: flex; flex-direction: column; justify-content: center; }
     .image-message { padding: 20px 0; line-height: 1.7; }
     .retry { align-self: flex-start; margin-bottom: 12px; }
+    .direct { margin: 20px 0; padding: 18px; border: 1px solid #d6dce6; border-radius: 10px; background: white; }
+    .direct h2 { margin: 0 0 12px; font-size: 1rem; }
+    .direct p, .direct li { line-height: 1.7; }
+    .direct ol { padding-left: 24px; }
+    .bookmarklet { display: inline-block; padding: 8px 12px; border: 1px solid #245bd6; border-radius: 6px; color: #245bd6; text-decoration: none; }
+    #direct-status { color: #a32626; }
+    #direct-status:empty { display: none; }
     [hidden] { display: none !important; }
     @media (max-width: 480px) { body { padding: 20px 14px; } .controls { flex-direction: column; } }
   </style>
   <script src="./config.js" defer></script>
   <script src="./app.js" defer></script>
+  <script src="./gallery-direct.js" defer></script>
 </head>
 <body>
   <main>
@@ -41,6 +49,17 @@
       </div>
     </form>
     <p id="status" role="status" aria-live="polite"></p>
+    <section id="direct-help" class="direct" aria-labelledby="direct-heading" hidden>
+      <h2 id="direct-heading">元サイトで縦表示する方法</h2>
+      <p>元サイトが画像取得サーバーからのアクセスを制限しています。元サイトをブラウザで表示できる場合は、次の方法で縦表示できます。</p>
+      <ol>
+        <li><a id="gallery-bookmarklet" class="bookmarklet" href="#" draggable="true" title="ブックマークバーへドラッグしてください">ギャラリーを縦表示</a> をブラウザのブックマークバーへドラッグして登録します（初回のみ）。</li>
+        <li><button id="open-original" type="button">元サイトで開く</button> を押します。</li>
+        <li>元サイトのギャラリーが表示されたら、登録したブックマークを押します。</li>
+      </ol>
+      <p>e-hentai.org専用です。元サイト上で縦表示し、スクロールに合わせて読み込みます。</p>
+      <p id="direct-status" role="status" aria-live="polite"></p>
+    </section>
     <section id="results" aria-label="画像" hidden>
       <ol id="images"></ol>
     </section>

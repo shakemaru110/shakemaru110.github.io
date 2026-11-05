@@ -7,7 +7,8 @@ const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 function create(fetch) {
   const elements = new Map();
   const document = { getElementById(id) {
-    if (!elements.has(id)) elements.set(id, { textContent: "", dataset: {}, addEventListener() {} });
+    if (!elements.has(id)) elements.set(id, { textContent: "", hidden: id === "direct-help", dataset: {}, listeners: new Map(),
+      replaceChildren() {}, addEventListener(type, callback) { this.listeners.set(type, callback); } });
     return elements.get(id);
   } };
   const context = createContext({ document, window: {}, fetch, URL, AbortController, setTimeout, clearTimeout, TypeError });
@@ -30,16 +31,33 @@ test("API ban reason reaches the user and stops the job queue", async () => {
   assert.equal(job.paused, true);
   assert.equal(job.queue.length, 0);
   assert.match(elements.get("status").textContent, /アクセスを制限/);
+  assert.equal(elements.get("direct-help").hidden, false);
   api.enqueue(job, { state: "error" });
   assert.equal(calls, 1);
 });
 
-test("challenge and login errors are distinguishable", async () => {
+test("challenge and login errors are distinguishable without showing the ban fallback", async () => {
   for (const code of ["UPSTREAM_CHALLENGE", "UPSTREAM_LOGIN_REQUIRED"]) {
-    const { api, job } = create(async () => Response.json({ code }, { status: 422 }));
+    const { api, job, elements } = create(async () => Response.json({ code }, { status: 422 }));
     await assert.rejects(api.getJson(job, "/api/images", {}), error => error.code === code && error.message !== "取得できませんでした。");
     assert.equal(job.paused, true);
+    assert.equal(elements.get("direct-help").hidden, true);
   }
+});
+
+test("a new submission hides the previous bookmark instructions", async () => {
+  const { api, job, elements } = create(async () => Response.json({ code: "UPSTREAM_BLOCKED" }, { status: 502 }));
+  await assert.rejects(api.getJson(job, "/api/images", {}));
+  assert.equal(elements.get("direct-help").hidden, false);
+  await elements.get("url-form").listeners.get("submit")({ preventDefault() {} });
+  assert.equal(elements.get("direct-help").hidden, true);
+});
+
+test("reader galleries do not offer an unsupported bookmark fallback", async () => {
+  const { api, job, elements } = create(async () => Response.json({ code: "UPSTREAM_BLOCKED" }, { status: 502 }));
+  job.gallery.kind = "reader";
+  await assert.rejects(api.getJson(job, "/api/images", {}));
+  assert.equal(elements.get("direct-help").hidden, true);
 });
 
 test("an obsolete request cannot pause the current job", async () => {
