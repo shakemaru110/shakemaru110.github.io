@@ -1,28 +1,108 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>shakemaru110.github.io</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 24px 20px; font-family: sans-serif; background: #f5f7fa; color: #202938; }
-    main { width: 100%; max-width: 820px; margin: auto; }
-    h1 { font-size: 1.5rem; overflow-wrap: anywhere; }
-    nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; }
-    nav a { display: block; padding: 28px 24px; border: 1px solid #d6dce6; border-radius: 12px; background: white; color: #245bd6; font-size: 1.25rem; text-decoration: none; }
-    nav a:hover { border-color: #245bd6; background: #edf2ff; }
-    :focus-visible { outline: 3px solid #668bee; outline-offset: 3px; }
-    @media (max-width: 480px) { body { padding: 20px 14px; } nav { grid-template-columns: 1fr; } }
-  </style>
+  <meta name="theme-color" content="#f6f5f1">
+  <meta name="description" content="間取り画像から壁を設定し、mm単位で家具を配置。画像出力と編集データの保存に対応した家具配置シミュレータ。">
+  <title>家具配置シミュレータ</title>
+  <link rel="stylesheet" href="./stage.css">
+  <script type="module" src="./stage.js"></script>
 </head>
 <body>
+  <header class="site-header">
+    <h1>家具配置シミュレータ<span class="brand-dot" aria-hidden="true"></span></h1>
+    <div class="file-actions">
+      <button id="export-image" type="button">画像を書き出す</button>
+      <button id="export-project" type="button">編集データを保存</button>
+      <label class="button" for="project-file">編集データを開く</label>
+      <input id="project-file" class="file-input" type="file" accept=".json,application/json">
+    </div>
+  </header>
   <main>
-    <h1>shakemaru110.github.io</h1>
-    <nav aria-label="ページ一覧">
-      <a href="./gallery.html">Gallery</a>
-      <a href="./metronome.html">Metronome</a>
-    </nav>
+    <div class="workspace">
+      <section class="stage-panel" aria-label="配置図の編集">
+        <div class="stage-toolbar">
+          <div class="mode-buttons" role="group" aria-label="編集モード">
+            <button type="button" data-mode="furniture" aria-pressed="true">家具を配置</button>
+            <button type="button" data-mode="wall" aria-pressed="false">壁を描く</button>
+            <button type="button" data-mode="floor" aria-pressed="false">床範囲</button>
+            <button type="button" data-mode="scale" aria-pressed="false">縮尺を合わせる</button>
+          </div>
+          <div class="zoom-controls" role="group" aria-label="拡大縮小">
+            <button id="zoom-out" type="button" aria-label="縮小">−</button>
+            <output id="zoom-label">100%</output>
+            <button id="zoom-in" type="button" aria-label="拡大">＋</button>
+            <button id="zoom-fit" type="button">全体</button>
+          </div>
+        </div>
+        <p id="mode-help" class="mode-help">家具をドラッグして配置。配置後はダブルクリックで手元に戻せます。</p>
+        <div id="viewport" class="viewport">
+          <div id="stage-wrap" class="stage-wrap">
+            <div id="stage" class="stage" role="group" aria-label="家具と壁の配置図">
+              <img id="plan-image" class="plan-image" alt="読み込んだ間取り図" hidden>
+              <div id="floor-layer" class="floor-layer"></div>
+              <div id="wall-layer" class="wall-layer"></div>
+              <div id="drawing-preview" class="drawing-preview" hidden></div>
+              <div id="scale-line" class="scale-line" hidden></div>
+            </div>
+          </div>
+        </div>
+        <div class="stage-footer">
+          <span id="scale-state">単位 mm</span>
+          <button id="delete-region" class="danger-text" type="button" hidden>選択した範囲を削除</button>
+          <button id="reset" type="button">家具の配置をリセット</button>
+        </div>
+        <form id="scale-form" class="scale-form" hidden>
+          <label for="known-length">選択した2点の実際の長さ（mm）</label>
+          <input id="known-length" type="number" min="1" max="100000" step="any" value="1000" required>
+          <button class="primary" type="submit">縮尺を適用</button>
+        </form>
+      </section>
+      <aside class="sidebar">
+        <section class="room-panel" aria-labelledby="room-heading">
+          <h2 id="room-heading">間取り</h2>
+          <label class="button upload-button" for="plan-file">間取り画像を読み込む</label>
+          <input id="plan-file" class="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/avif">
+          <p class="help">PNG・JPEG・WebP・AVIF。画像を読み込み、壁と配置できる床範囲をドラッグで指定します。</p>
+          <label class="check-label"><input id="show-plan" type="checkbox" checked>間取り画像を表示</label>
+          <details class="room-settings">
+            <summary>部屋全体のサイズを設定</summary>
+            <form id="room-form">
+              <div class="field-pair">
+                <label>W（mm）<input id="room-width" type="number" min="1" max="100000" step="any" value="4000" required></label>
+                <label>H（mm）<input id="room-height" type="number" min="1" max="100000" step="any" value="4000" required></label>
+              </div>
+              <button type="submit">サイズを適用</button>
+            </form>
+          </details>
+        </section>
+        <section class="furniture-panel" aria-labelledby="objects-heading">
+          <div class="panel-heading"><h2 id="objects-heading">家具</h2><span id="placement-count" class="placement-count">0 / 2 配置済み</span></div>
+          <p class="help">家具の「編集」で名前・表示文字・寸法を変更できます。</p>
+          <div id="object-list" class="object-list"></div>
+          <form id="object-form" class="object-form">
+            <h3 id="editor-heading">家具を追加</h3>
+            <label>家具の名前<input id="object-name" type="text" maxlength="80" placeholder="例 ソファ" required></label>
+            <label>家具の上に表示する文字<input id="object-label" type="text" maxlength="40" placeholder="例 ソファ / S1（空欄も可）"></label>
+            <div class="field-pair">
+              <label>W（mm）<input id="object-width" type="number" min="1" max="100000" step="1" value="1000" required></label>
+              <label>H（mm）<input id="object-height" type="number" min="1" max="100000" step="1" value="1000" required></label>
+            </div>
+            <p class="help">Wは横幅、Hは縦幅。名前と表示文字は別々に設定できます。</p>
+            <div class="editor-actions"><button id="save-object" class="primary" type="submit">追加する</button><button id="new-object" type="button" hidden>追加に切替</button><button id="delete-object" class="danger-text" type="button" hidden>削除</button></div>
+          </form>
+        </section>
+      </aside>
+    </div>
+    <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true">家具をドラッグして配置するか、間取り画像を読み込んでください。</p>
+    <details class="usage"><summary>使い方・キーボード操作</summary><p>画像の読み込み後は「縮尺を合わせる」で既知の距離の両端をクリックし、実際の長さをmmで入力します。「壁を描く」で長方形の壁を追加し、「床範囲」で家具を置ける範囲を追加します。床範囲を組み合わせるとL字型の部屋にも対応できます。壁・床範囲はクリックで選択して削除できます。</p><p>家具はEnterで配置、矢印で10 mm、Shift併用で100 mm移動。Deleteで未配置に戻し、Escでドラッグや描画を中止します。拡大後は図の周囲のスクロールバーで移動できます。編集データには間取り画像・壁・床範囲・家具をまとめて保存します。</p></details>
   </main>
+  <template id="object-template">
+    <div class="object-card">
+      <div class="object-slot"><span class="slot-placeholder" aria-hidden="true" hidden>配置済み</span><button class="object" type="button"><span></span></button></div>
+      <div class="object-details"><h3 class="object-name"></h3><p class="object-dimensions"></p><div class="card-actions"><button class="place-object" type="button">配置</button><button class="edit-object" type="button">編集</button></div></div>
+    </div>
+  </template>
 </body>
 </html>
