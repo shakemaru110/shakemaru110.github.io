@@ -1,4 +1,5 @@
 import { canPlace, nearestPosition, rotateFurniture, validateProject } from './layout.js';
+import { fitLabel, LABEL_FONT } from './label.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
@@ -23,6 +24,21 @@ let gesture = null;
 let scalePoints = [];
 let loadRevision = 0;
 let serial = 0;
+let navigation = null;
+const touchPoints = new Map();
+const labelContext = document.createElement('canvas').getContext('2d');
+
+function renderLabel(element, item, maximum = 18) {
+  const angle = item.rotation || 0;
+  const bounds = element.getBoundingClientRect();
+  const sideways = angle % 180 !== 0;
+  const width = sideways ? bounds.height : bounds.width;
+  const height = sideways ? bounds.width : bounds.height;
+  const text = fitLabel(labelContext, item.label, width, height, maximum);
+  const span = element.querySelector('span');
+  span.textContent = text.lines.join('\n');
+  Object.assign(span.style, { fontSize: `${text.size}px`, lineHeight: `${text.lineHeight}px`, transform: `translate(-50%, -50%) rotate(${angle}deg)` });
+}
 
 function status(message) { $('status').textContent = message; }
 function itemById(id) { return project.furniture.find(item => item.id === id); }
@@ -48,6 +64,10 @@ function fitStage() {
   $('zoom-out').disabled = project.view.zoom <= .25;
   $('zoom-in').disabled = project.view.zoom >= 4;
   drawScaleLine();
+  for (const item of project.furniture) {
+    const node = nodes.get(item.id);
+    if (node) renderLabel(node.element, item, item.position ? Math.min(18, 12 * project.view.zoom) : 11);
+  }
 }
 function renderRegions() {
   for (const [kind, values, layer] of [['floor', project.room.areas, $('floor-layer')], ['wall', project.room.walls, $('wall-layer')]]) {
@@ -222,9 +242,11 @@ function startFurniture(event, id) {
   event.preventDefault(); event.stopPropagation();
   const node = nodes.get(id);
   const bounds = node.element.getBoundingClientRect();
+  const view = viewport.getBoundingClientRect();
   selectItem(id);
   gesture = { kind: 'furniture', id, pointerId: event.pointerId, target: node.element,
-    horizontalScroll: event.pointerType === 'touch' && !itemById(id).position && compactLayout.matches,
+    enteredViewport: event.clientX >= view.left && event.clientX <= view.left + viewport.clientWidth &&
+      event.clientY >= view.top && event.clientY <= view.top + viewport.clientHeight,
     startX: event.clientX, startY: event.clientY,
     grabX: (event.clientX - bounds.left) / bounds.width, grabY: (event.clientY - bounds.top) / bounds.height,
     ghost: null, position: null };
@@ -233,19 +255,23 @@ function startFurniture(event, id) {
 }
 function updateFurniture(event) {
   const g = gesture;
+  g.pointer = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
   const item = itemById(g.id);
   const node = nodes.get(g.id);
   if (!g.ghost) {
-    if (g.horizontalScroll && Math.abs(event.clientX - g.startX) >= Math.abs(event.clientY - g.startY)) return;
     if (Math.hypot(event.clientX - g.startX, event.clientY - g.startY) < 4) return;
     g.ghost = document.createElement('div');
     g.ghost.className = 'object drag-ghost';
     g.ghost.style.setProperty('--color', item.color);
-    g.ghost.textContent = item.label;
+    g.ghost.append(document.createElement('span'));
     g.ghost.setAttribute('aria-hidden', 'true');
     document.body.append(g.ghost);
     node.element.classList.add('dragging'); document.body.classList.add('is-dragging');
+    g.autoPanFrame = requestAnimationFrame(autoPanFurniture);
   }
+  const view = viewport.getBoundingClientRect();
+  if (event.clientX >= view.left && event.clientX <= view.left + viewport.clientWidth &&
+      event.clientY >= view.top && event.clientY <= view.top + viewport.clientHeight) g.enteredViewport = true;
   const bounds = stage.getBoundingClientRect();
   const scale = bounds.width / project.room.width;
   const point = worldPoint(event);
@@ -257,6 +283,28 @@ function updateFurniture(event) {
   Object.assign(g.ghost.style, { left: `${bounds.left + displayed.x * scale}px`, top: `${bounds.top + displayed.y * scale}px`,
     width: `${item.width * scale}px`, height: `${item.height * scale}px`, fontSize: `${Math.max(8, Math.min(18, 12 * project.view.zoom))}px` });
   g.ghost.classList.toggle('invalid', !g.position);
+  renderLabel(g.ghost, item, Math.min(18, 12 * project.view.zoom));
+}
+function autoPanFurniture(time) {
+  const g = gesture;
+  if (g?.kind !== 'furniture' || !g.ghost) return;
+  const seconds = Math.min(32, time - (g.lastPanTime || time - 16)) / 1000;
+  g.lastPanTime = time;
+  if (g.enteredViewport) {
+    const bounds = viewport.getBoundingClientRect();
+    const edge = Math.min(48, viewport.clientWidth / 5, viewport.clientHeight / 5);
+    const velocity = (point, start, end) => {
+      if (point < start + edge) return -800 * Math.min(1, (start + edge - point) / edge);
+      if (point > end - edge) return 800 * Math.min(1, (point - end + edge) / edge);
+      return 0;
+    };
+    const left = viewport.scrollLeft;
+    const top = viewport.scrollTop;
+    viewport.scrollLeft += velocity(g.pointer.clientX, bounds.left, bounds.left + viewport.clientWidth) * seconds;
+    viewport.scrollTop += velocity(g.pointer.clientY, bounds.top, bounds.top + viewport.clientHeight) * seconds;
+    if (viewport.scrollLeft !== left || viewport.scrollTop !== top) updateFurniture(g.pointer);
+  }
+  g.autoPanFrame = requestAnimationFrame(autoPanFurniture);
 }
 function reconcileFurniture() {
   let changed = 0;
@@ -271,6 +319,7 @@ function reconcileFurniture() {
 function finishGesture(commit) {
   if (!gesture) return;
   const g = gesture; gesture = null;
+  if (g.autoPanFrame) cancelAnimationFrame(g.autoPanFrame);
   if (g.target.hasPointerCapture(g.pointerId)) g.target.releasePointerCapture(g.pointerId);
   if (g.kind === 'furniture') {
     const node = nodes.get(g.id);
@@ -358,11 +407,92 @@ window.addEventListener('keydown', event => {
   if (event.key === 'Escape') { finishGesture(false); scalePoints = []; drawScaleLine(); $('scale-form').hidden = true; }
 });
 window.addEventListener('blur', () => finishGesture(false));
-viewport.addEventListener('scroll', () => finishGesture(false), { passive: true });
+viewport.addEventListener('scroll', () => {
+  if (gesture?.kind === 'furniture' && gesture.ghost) updateFurniture(gesture.pointer);
+  else if (!navigation) finishGesture(false);
+}, { passive: true });
 window.addEventListener('scroll', () => finishGesture(false), { passive: true });
 new ResizeObserver(() => { finishGesture(false); fitStage(); }).observe(viewport);
 for (const button of document.querySelectorAll('[data-mode]')) button.addEventListener('click', () => setMode(button.dataset.mode));
-function setZoom(value) { finishGesture(false); project.view.zoom = Math.max(.25, Math.min(4, value)); render(); }
+function setZoom(value, anchor = null, fraction = null) {
+  finishGesture(false);
+  const before = stage.getBoundingClientRect();
+  const viewBounds = viewport.getBoundingClientRect();
+  const point = anchor || { x: viewBounds.left + viewport.clientWidth / 2, y: viewBounds.top + viewport.clientHeight / 2 };
+  const relative = fraction || { x: (point.x - before.left) / before.width, y: (point.y - before.top) / before.height };
+  project.view.zoom = Math.max(.25, Math.min(4, value));
+  render();
+  const after = stage.getBoundingClientRect();
+  viewport.scrollLeft += after.left + relative.x * after.width - point.x;
+  viewport.scrollTop += after.top + relative.y * after.height - point.y;
+}
+function beginPinch() {
+  finishGesture(false);
+  const [a, b] = [...touchPoints.values()];
+  const midpoint = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const bounds = stage.getBoundingClientRect();
+  navigation = {
+    kind: 'pinch', zoom: project.view.zoom,
+    distance: Math.max(1, Math.hypot(b.x - a.x, b.y - a.y)),
+    fraction: { x: (midpoint.x - bounds.left) / bounds.width, y: (midpoint.y - bounds.top) / bounds.height }
+  };
+  for (const id of touchPoints.keys()) viewport.setPointerCapture(id);
+}
+viewport.addEventListener('pointerdown', event => {
+  if (event.pointerType !== 'touch') return;
+  touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (touchPoints.size >= 2) {
+    event.preventDefault();
+    event.stopPropagation();
+    beginPinch();
+  }
+}, { capture: true });
+viewport.addEventListener('pointerdown', event => {
+  if (navigation || gesture || mode !== 'furniture' || event.button !== 0) return;
+  event.preventDefault();
+  navigation = { kind: 'pan', pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+    left: viewport.scrollLeft, top: viewport.scrollTop };
+  viewport.setPointerCapture(event.pointerId);
+});
+window.addEventListener('pointermove', event => {
+  if (touchPoints.has(event.pointerId)) touchPoints.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  if (!navigation) return;
+  if (navigation.kind === 'pinch') {
+    if (!touchPoints.has(event.pointerId) || touchPoints.size < 2) return;
+    const [a, b] = [...touchPoints.values()];
+    const distance = Math.hypot(b.x - a.x, b.y - a.y);
+    setZoom(navigation.zoom * distance / navigation.distance,
+      { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, navigation.fraction);
+  } else if (navigation.pointerId === event.pointerId) {
+    viewport.scrollLeft = navigation.left + navigation.x - event.clientX;
+    viewport.scrollTop = navigation.top + navigation.y - event.clientY;
+  } else return;
+  event.preventDefault();
+  event.stopPropagation();
+}, { capture: true, passive: false });
+function endViewPointer(event) {
+  touchPoints.delete(event.pointerId);
+  if (!navigation) return;
+  if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+  if (navigation.kind === 'pinch') {
+    if (touchPoints.size >= 2) beginPinch();
+    else if (touchPoints.size === 1) {
+      const [pointerId, point] = [...touchPoints.entries()][0];
+      navigation = { kind: 'pan', pointerId, ...point, left: viewport.scrollLeft, top: viewport.scrollTop };
+    } else navigation = null;
+  } else if (navigation.pointerId === event.pointerId) navigation = null;
+}
+window.addEventListener('pointerup', endViewPointer, { capture: true });
+window.addEventListener('pointercancel', endViewPointer, { capture: true });
+window.addEventListener('blur', () => { navigation = null; touchPoints.clear(); });
+viewport.addEventListener('wheel', event => {
+  event.preventDefault();
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewport.clientHeight : 1;
+  if (event.ctrlKey) {
+    setZoom(project.view.zoom * Math.exp(-event.deltaY * unit * .002), { x: event.clientX, y: event.clientY });
+  } else if (event.shiftKey) viewport.scrollLeft += (event.deltaY || event.deltaX) * unit;
+  else viewport.scrollBy(event.deltaX * unit, event.deltaY * unit);
+}, { passive: false });
 $('zoom-in').addEventListener('click', () => setZoom(project.view.zoom * 1.25));
 $('zoom-out').addEventListener('click', () => setZoom(project.view.zoom / 1.25));
 $('zoom-fit').addEventListener('click', () => { setZoom(1); viewport.scrollTo(0, 0); });
@@ -387,6 +517,7 @@ $('object-form').addEventListener('submit', event => {
   const item = { id: existing?.id || uid(), name: $('object-name').value.trim(), label: $('object-label').value.trim(),
     width: $('object-width').valueAsNumber, height: $('object-height').valueAsNumber,
     color: existing?.color || colors[serial % colors.length], position: existing?.position || null };
+  item.rotation = existing?.rotation || 0;
   if (item.position) item.position = nearestPosition(project.room, project.furniture, item, item.position);
   if (existing) Object.assign(existing, item);
   else { project.furniture.push(item); serial++; addNode(item); }
@@ -526,9 +657,14 @@ $('export-image').addEventListener('click', async () => {
       ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
       ctx.fillStyle = item.color; ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = '#00000030'; ctx.strokeRect(x, y, w, h);
-      ctx.fillStyle = '#29352d'; ctx.font = `${Math.max(10, Math.min(28, h * .35))}px sans-serif`;
+      ctx.translate(x + w / 2, y + h / 2);
+      const angle = item.rotation || 0;
+      ctx.rotate(angle * Math.PI / 180);
+      const sideways = angle % 180 !== 0;
+      const text = fitLabel(ctx, item.label, sideways ? h : w, sideways ? w : h, 28);
+      ctx.fillStyle = '#29352d'; ctx.font = `${text.size}px ${LABEL_FONT}`;
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      if (item.label) ctx.fillText(item.label, x + w / 2, y + h / 2, Math.max(1, w - 4));
+      text.lines.forEach((line, index) => ctx.fillText(line, 0, (index - (text.lines.length - 1) / 2) * text.lineHeight));
       ctx.restore();
     }
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -538,7 +674,8 @@ $('export-image').addEventListener('click', async () => {
   finally { button.disabled = false; }
 });
 for (const [index, label] of ['A', 'B'].entries()) {
-  const item = { id: uid(), name: `家具 ${label}`, label, width: 1000, height: 1000, color: colors[index], position: null };
+  const item = { id: uid(), name: `家具 ${label}`, label, width: 1000, height: 1000, color: colors[index], position: null, rotation: 0 };
   project.furniture.push(item); addNode(item); serial++;
 }
 beginNew(); setMode('furniture'); render();
+document.fonts.ready.then(() => fitStage());

@@ -81,7 +81,7 @@
         <section class="furniture-panel" aria-labelledby="objects-heading">
           <div class="panel-heading"><h2 id="objects-heading">家具</h2><span id="placement-count" class="placement-count">0 / 2 配置済み</span></div>
           <p class="help furniture-help">家具の「編集」で名前・表示文字・寸法を変更できます。</p>
-          <p class="help touch-help">一覧は左右にスワイプ。家具を上の間取りへドラッグして配置できます。</p>
+          <p class="help touch-help">一覧の余白を左右にスワイプ。家具は1回触れて、そのまま上の間取りへドラッグできます。</p>
           <div id="object-list" class="object-list"></div>
           <form id="object-form" class="object-form">
             <h3 id="editor-heading">家具を追加</h3>
@@ -98,7 +98,7 @@
       </aside>
     </div>
     <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true">家具をドラッグして配置するか、間取り画像を読み込んでください。</p>
-    <details class="usage"><summary>使い方・キーボード操作</summary><p>画像の読み込み後は「縮尺を合わせる」で既知の距離の両端をクリックし、実際の長さをmmで入力します。「壁を描く」で長方形の壁を追加し、「床範囲」で家具を置ける範囲を追加します。床範囲を組み合わせるとL字型の部屋にも対応できます。壁・床範囲はクリックで選択して削除できます。</p><p>家具はEnterで配置、Rキーで90度回転、矢印で10 mm、Shift併用で100 mm移動。Deleteで未配置に戻し、Escでドラッグや描画を中止します。拡大後は図の周囲のスクロールバーで移動できます。編集データには間取り画像・壁・床範囲・家具をまとめて保存します。</p></details>
+    <details class="usage"><summary>使い方・キーボード操作</summary><p>画像の読み込み後は「縮尺を合わせる」で既知の距離の両端をクリックし、実際の長さをmmで入力します。「壁を描く」で長方形の壁を追加し、「床範囲」で家具を置ける範囲を追加します。床範囲を組み合わせるとL字型の部屋にも対応できます。壁・床範囲はクリックで選択して削除できます。</p><p>家具はEnterで配置、Rキーで90度回転、矢印で10 mm、Shift併用で100 mm移動。Deleteで未配置に戻し、Escでドラッグや描画を中止します。配置画面内でCtrl＋スクロールは拡大縮小、スクロールは縦移動、Shift＋スクロールは横移動。スマホは2本指のピンチで拡大縮小、空白部分のドラッグで表示位置を移動できます。編集データには間取り画像・壁・床範囲・家具をまとめて保存します。</p></details>
   </main>
   <template id="object-template">
     <div class="object-card">

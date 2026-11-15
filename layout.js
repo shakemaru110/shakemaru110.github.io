@@ -74,7 +74,7 @@ export function nearestPosition(room, furniture, item, target, previous = target
 }
 
 export function rotateFurniture(room, furniture, item) {
-  const rotated = { ...item, width: item.height, height: item.width };
+  const rotated = { ...item, width: item.height, height: item.width, rotation: ((item.rotation || 0) + 90) % 360 };
   if (!item.position) return rotated;
   const target = {
     x: item.position.x + (item.width - rotated.width) / 2,
@@ -108,7 +108,9 @@ export function validateProject(value) {
         !text(item.label, 40) || !number(item.width, 1, 100000) || !number(item.height, 1, 100000) ||
         !/^#[0-9a-f]{6}$/i.test(item.color)) fail();
     ids.add(item.id);
+    if (item.rotation !== undefined && ![0, 90, 180, 270].includes(item.rotation)) fail();
     const clean = { id: item.id, name: item.name, label: item.label, width: item.width, height: item.height, color: item.color,
+      rotation: item.rotation || 0,
       position: item.position === null ? null : { x: item.position?.x, y: item.position?.y } };
     if (item.position !== null && !canPlace(room, furniture, clean, item.position)) fail();
     furniture.push(clean);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { canPlace, nearestPosition, rotateFurniture, validateProject } from './layout.js';
 
 const rect = (x, y, width, height, id = 'floor') => ({ id, x, y, width, height });
-const furniture = (id, width, height, position = null) => ({ id, name: id, label: id, width, height, color: '#a7b6d0', position });
+const furniture = (id, width, height, position = null) => ({ id, name: id, label: id, width, height, color: '#a7b6d0', position, rotation: 0 });
 const room = (areas = [rect(0, 0, 4000, 4000)], walls = []) => ({ width: 4000, height: 4000, calibrated: true, background: null, areas, walls });
 
 test('rotation preserves the centre and four turns restore furniture dimensions and position', () => {
@@ -78,15 +78,19 @@ test('project files preserve names, independent labels, images, geometry and unp
     furniture: [furniture('ソファ', 1500, 600, { x: 100, y: 200 }), furniture('棚', 500, 1000)],
     view: { zoom: 1.5, showPlan: true } };
   model.furniture[0].label = 'S1';
+  model.furniture[0].rotation = 90;
   model.room.background = { name: 'plan.png', dataUrl: 'data:image/png;base64,AAAA' };
   assert.deepEqual(validateProject(JSON.parse(JSON.stringify(model))), model);
   const legacy = structuredClone(model);
   delete legacy.name;
   assert.equal(validateProject(legacy).name, '家具配置データ');
+  delete legacy.furniture[0].rotation;
+  assert.equal(validateProject(legacy).furniture[0].rotation, 0);
   const snapshot = JSON.stringify(model);
   for (const change of [
     value => value.unit = 'm', value => value.version = 2,
     value => value.furniture[0].width = -1,
+    value => value.furniture[0].rotation = 45,
     value => value.furniture[1].id = value.furniture[0].id,
     value => value.furniture[1].position = { x: 100, y: 200 },
     value => value.room.walls.push(rect(100, 200, 10, 10, 'blocked')),
