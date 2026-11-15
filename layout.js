@@ -73,6 +73,17 @@ export function nearestPosition(room, furniture, item, target, previous = target
   return best;
 }
 
+export function rotateFurniture(room, furniture, item) {
+  const rotated = { ...item, width: item.height, height: item.width };
+  if (!item.position) return rotated;
+  const target = {
+    x: item.position.x + (item.width - rotated.width) / 2,
+    y: item.position.y + (item.height - rotated.height) / 2
+  };
+  rotated.position = nearestPosition(room, furniture, rotated, target, item.position);
+  return rotated.position ? rotated : null;
+}
+
 export function validateProject(value) {
   const fail = () => { throw new Error("家具配置シミュレータの有効な保存ファイルではありません。"); };
   const number = (n, min, max) => typeof n === "number" && Number.isFinite(n) && n >= min && n <= max;

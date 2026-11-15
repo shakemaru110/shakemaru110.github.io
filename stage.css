@@ -81,7 +81,7 @@ body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
 .object-details h3 { overflow-wrap: anywhere; line-height: 1.5; }
 .object-details p { font-size: 10px; color: #89907f; margin: 4px 0 7px; overflow-wrap: anywhere; }
 .card-actions { display: flex; flex-wrap: wrap; gap: 5px; }
-.edit-object, .place-object { padding: 4px 9px; font-size: 10px; }
+.edit-object, .place-object, .rotate-object { padding: 4px 9px; font-size: 10px; }
 .object-form { border-top: 1px solid #e0e5d8; margin-top: 23px; padding-top: 20px; display: grid; gap: 12px; }
 .object-form label, .field-pair label { display: grid; min-width: 0; gap: 7px; font-size: 11px; color: #68775d; }
 input[type="text"], input[type="number"] { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #d6ddcd; border-radius: 5px; background: #fffefa; color: #34452c; font-size: 12px; }

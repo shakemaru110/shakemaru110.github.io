@@ -1,10 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canPlace, nearestPosition, validateProject } from './layout.js';
+import { canPlace, nearestPosition, rotateFurniture, validateProject } from './layout.js';
 
 const rect = (x, y, width, height, id = 'floor') => ({ id, x, y, width, height });
 const furniture = (id, width, height, position = null) => ({ id, name: id, label: id, width, height, color: '#a7b6d0', position });
 const room = (areas = [rect(0, 0, 4000, 4000)], walls = []) => ({ width: 4000, height: 4000, calibrated: true, background: null, areas, walls });
+
+test('rotation preserves the centre and four turns restore furniture dimensions and position', () => {
+  const original = furniture('sofa', 1500, 600, { x: 1000, y: 1000 });
+  let item = original;
+  for (let n = 0; n < 4; n++) {
+    item = rotateFurniture(room(), [item], item);
+    assert.equal(item.position.x + item.width / 2, 1750);
+    assert.equal(item.position.y + item.height / 2, 1300);
+  }
+  assert.deepEqual(item, original);
+  const tray = rotateFurniture(room(), [], furniture('tray', 2000, 500));
+  assert.equal(tray.width, 500);
+  assert.equal(tray.height, 2000);
+  assert.equal(tray.position, null);
+});
+
+test('rotation finds a legal position near walls and refuses impossible fits without modifying furniture', () => {
+  const model = room(undefined, [rect(1200, 500, 100, 2000, 'wall')]);
+  const item = furniture('sofa', 1500, 500, { x: 0, y: 0 });
+  const rotated = rotateFurniture(model, [item], item);
+  assert.ok(rotated && canPlace(model, [item], rotated, rotated.position));
+  const corridor = { ...room(), width: 4000, height: 600, areas: [rect(0, 0, 4000, 600)] };
+  const snapshot = structuredClone(item);
+  assert.equal(rotateFurniture(corridor, [item], item), null);
+  assert.deepEqual(item, snapshot);
+});
 
 test('rectangular furniture must fit entirely within the union of floor regions', () => {
   const item = furniture('A', 1200, 600);

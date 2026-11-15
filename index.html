@@ -98,12 +98,12 @@
       </aside>
     </div>
     <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true">家具をドラッグして配置するか、間取り画像を読み込んでください。</p>
-    <details class="usage"><summary>使い方・キーボード操作</summary><p>画像の読み込み後は「縮尺を合わせる」で既知の距離の両端をクリックし、実際の長さをmmで入力します。「壁を描く」で長方形の壁を追加し、「床範囲」で家具を置ける範囲を追加します。床範囲を組み合わせるとL字型の部屋にも対応できます。壁・床範囲はクリックで選択して削除できます。</p><p>家具はEnterで配置、矢印で10 mm、Shift併用で100 mm移動。Deleteで未配置に戻し、Escでドラッグや描画を中止します。拡大後は図の周囲のスクロールバーで移動できます。編集データには間取り画像・壁・床範囲・家具をまとめて保存します。</p></details>
+    <details class="usage"><summary>使い方・キーボード操作</summary><p>画像の読み込み後は「縮尺を合わせる」で既知の距離の両端をクリックし、実際の長さをmmで入力します。「壁を描く」で長方形の壁を追加し、「床範囲」で家具を置ける範囲を追加します。床範囲を組み合わせるとL字型の部屋にも対応できます。壁・床範囲はクリックで選択して削除できます。</p><p>家具はEnterで配置、Rキーで90度回転、矢印で10 mm、Shift併用で100 mm移動。Deleteで未配置に戻し、Escでドラッグや描画を中止します。拡大後は図の周囲のスクロールバーで移動できます。編集データには間取り画像・壁・床範囲・家具をまとめて保存します。</p></details>
   </main>
   <template id="object-template">
     <div class="object-card">
       <div class="object-slot"><span class="slot-placeholder" aria-hidden="true" hidden>配置済み</span><button class="object" type="button"><span></span></button></div>
-      <div class="object-details"><h3 class="object-name"></h3><p class="object-dimensions"></p><div class="card-actions"><button class="place-object" type="button">配置</button><button class="edit-object" type="button">編集</button></div></div>
+      <div class="object-details"><h3 class="object-name"></h3><p class="object-dimensions"></p><div class="card-actions"><button class="place-object" type="button">配置</button><button class="rotate-object" type="button">90°回転</button><button class="edit-object" type="button">編集</button></div></div>
     </div>
   </template>
 </body>

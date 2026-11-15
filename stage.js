@@ -1,4 +1,4 @@
-import { canPlace, nearestPosition, validateProject } from './layout.js';
+import { canPlace, nearestPosition, rotateFurniture, validateProject } from './layout.js';
 
 const $ = id => document.getElementById(id);
 const stage = $('stage');
@@ -86,6 +86,7 @@ function render() {
     node.card.querySelector('.object-name').textContent = item.name;
     node.card.querySelector('.object-dimensions').textContent = `W ${item.width} × H ${item.height} mm`;
     node.card.querySelector('.place-object').textContent = item.position ? '戻す' : '配置';
+    node.card.querySelector('.rotate-object').setAttribute('aria-label', `${item.name}を90度回転`);
   }
   $('placement-count').textContent = `${project.furniture.filter(item => item.position).length} / ${project.furniture.length} 配置済み`;
   $('plan-image').hidden = !room.background || !project.view.showPlan;
@@ -134,6 +135,7 @@ function addNode(item) {
   element.addEventListener('dblclick', event => { event.preventDefault(); if (!node.lastWasDrag) returnToTray(item.id); });
   element.addEventListener('lostpointercapture', () => { if (gesture?.id === item.id) finishGesture(false); });
   card.querySelector('.edit-object').addEventListener('click', () => editItem(itemById(item.id)));
+  card.querySelector('.rotate-object').addEventListener('click', () => rotateItem(item.id));
   card.querySelector('.place-object').addEventListener('click', () => {
     if (itemById(item.id).position) returnToTray(item.id);
     else {
@@ -166,8 +168,30 @@ function placeFurniture(id) {
   render(); nodes.get(id).element.focus({ preventScroll: true });
   status(item.position ? `${item.name}を配置しました。` : 'この家具を配置できるスペースがありません。');
 }
+function rotateItem(id) {
+  finishGesture(false);
+  const item = itemById(id);
+  const rotated = rotateFurniture(project.room, project.furniture, item);
+  if (!rotated) {
+    status(`${item.name}は回転後のサイズで配置できる場所がありません。未配置に戻してから回転できます。`);
+    return;
+  }
+  Object.assign(item, rotated);
+  if (editorId === id) {
+    $('object-width').value = item.width;
+    $('object-height').value = item.height;
+  }
+  selectItem(id);
+  render();
+  status(`${item.name}を90度回転しました。W ${item.width} × H ${item.height} mm。`);
+}
 function furnitureKey(event, id) {
   if (gesture) return;
+  if (event.key.toLowerCase() === 'r' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    event.preventDefault();
+    rotateItem(id);
+    return;
+  }
   const item = itemById(id);
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault();
@@ -475,6 +499,7 @@ $('project-file').addEventListener('change', async event => {
     const next = validateProject(JSON.parse(await file.text()));
     const image = next.room.background ? await decodeImage(next.room.background.dataUrl) : null;
     if (revision !== loadRevision) return;
+    next.name = file.name.replace(/\.json$/i, '').trim().slice(0, 80) || next.name;
     finishGesture(false); project = next; backgroundImage = image;
     $('plan-image').src = next.room.background?.dataUrl || '';
     serial = next.furniture.length; rebuild(); viewport.scrollTo(0, 0);
