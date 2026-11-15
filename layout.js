@@ -78,6 +78,7 @@ export function validateProject(value) {
   const number = (n, min, max) => typeof n === "number" && Number.isFinite(n) && n >= min && n <= max;
   const text = (s, max) => typeof s === "string" && s.length <= max;
   if (!value || value.format !== "furniture-layout" || value.version !== 1 || value.unit !== "mm") fail();
+  if (value.name !== undefined && !text(value.name, 80)) fail();
   const room = value.room;
   if (!room || !number(room.width, 1, 100000) || !number(room.height, 1, 100000) ||
       typeof room.calibrated !== "boolean" || !Array.isArray(room.areas) || !Array.isArray(room.walls)) fail();
@@ -104,7 +105,7 @@ export function validateProject(value) {
   const rectIds = [...room.areas, ...room.walls].map(rect => rect.id);
   if (new Set(rectIds).size !== rectIds.length) fail();
   return {
-    format: "furniture-layout", version: 1, unit: "mm",
+    format: "furniture-layout", version: 1, unit: "mm", name: value.name?.trim() || "家具配置データ",
     room: { width: room.width, height: room.height, calibrated: room.calibrated,
       background: room.background ? { name: room.background.name, dataUrl: room.background.dataUrl } : null,
       areas: room.areas.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })),

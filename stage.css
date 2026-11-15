@@ -15,6 +15,8 @@ h3 { font-size: 12px; font-weight: 600; }
 .site-header { min-height: 90px; padding: 20px max(24px, calc((100vw - 1400px) / 2)); display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #dedfd8; }
 .brand-dot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; background: #dd895b; border-radius: 50%; }
 .file-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.save-name { display: grid; gap: 4px; font-size: 10px; color: #68775d; width: 200px; }
+.touch-help { display: none; }
 .button { display: inline-block; }
 .file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 main { max-width: 1448px; margin: auto; padding: 26px 24px; }
@@ -100,17 +102,36 @@ input[type="text"], input[type="number"] { width: 100%; min-width: 0; padding: 9
   .mode-buttons { flex-wrap: wrap; }
   .viewport { height: 58vh; }
 }
+@media (max-width: 1100px), (hover: none) and (pointer: coarse) {
+  .site-header { flex-wrap: wrap; }
+  .workspace { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .sidebar { display: contents; }
+  .room-panel { order: -1; margin: 0; padding: 16px; border: 1px solid #dce1d4; border-radius: 10px; background: #fffefa; }
+  .room-panel .upload-button { width: auto; margin-top: 12px; }
+  .stage-panel { position: relative; top: auto; }
+  .viewport { height: clamp(260px, 43dvh, 440px); min-height: 260px; }
+  .furniture-panel { min-width: 0; padding: 14px; border: 1px solid #dce1d4; border-radius: 10px; background: #fffefa; }
+  .object-list { display: flex; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; gap: 10px; padding: 6px 5px 12px; touch-action: pan-x; }
+  .object-card { flex: 0 0 150px; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; }
+  .object-slot { flex: 0 0 58px; width: 58px; }
+  .object-slot > .object { touch-action: pan-x; }
+  .furniture-help { display: none; }
+  .touch-help { display: block; margin: 7px 0 9px; }
+  .object-form { max-width: 620px; }
+}
 @media (max-width: 700px) {
   .workspace { grid-template-columns: 1fr; }
   .stage-panel { position: relative; top: auto; }
   .stage-toolbar { padding: 12px 12px 0; }
   .mode-buttons button { padding: 8px; font-size: 10px; }
-  .viewport { height: 440px; min-height: 300px; }
+  .viewport { height: clamp(260px, 40dvh, 340px); min-height: 260px; }
   .mode-help { font-size: 10px; }
   .file-actions button, .file-actions .button { padding: 8px; font-size: 10px; }
   .stage-wrap { padding: 16px; }
-  .object-list { grid-template-columns: 1fr 1fr; }
   .object-card { flex-direction: column; align-items: flex-start; padding: 12px; gap: 10px; }
   .object-slot { flex: 0 0 58px; width: 58px; }
   .sidebar { padding: 20px; }
+  .save-name { width: 100%; }
+  .file-actions { width: 100%; }
+  input[type="text"], input[type="number"] { font-size: 16px; }
 }

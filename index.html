@@ -13,6 +13,7 @@
   <header class="site-header">
     <h1>家具配置シミュレータ<span class="brand-dot" aria-hidden="true"></span></h1>
     <div class="file-actions">
+      <label class="save-name" for="project-name">保存名<input id="project-name" type="text" maxlength="80" value="家具配置データ" placeholder="例 リビング配置案"></label>
       <button id="export-image" type="button">画像を書き出す</button>
       <button id="export-project" type="button">編集データを保存</button>
       <label class="button" for="project-file">編集データを開く</label>
@@ -79,7 +80,8 @@
         </section>
         <section class="furniture-panel" aria-labelledby="objects-heading">
           <div class="panel-heading"><h2 id="objects-heading">家具</h2><span id="placement-count" class="placement-count">0 / 2 配置済み</span></div>
-          <p class="help">家具の「編集」で名前・表示文字・寸法を変更できます。</p>
+          <p class="help furniture-help">家具の「編集」で名前・表示文字・寸法を変更できます。</p>
+          <p class="help touch-help">一覧は左右にスワイプ。家具を上の間取りへドラッグして配置できます。</p>
           <div id="object-list" class="object-list"></div>
           <form id="object-form" class="object-form">
             <h3 id="editor-heading">家具を追加</h3>

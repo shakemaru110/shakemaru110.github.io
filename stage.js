@@ -4,12 +4,13 @@ const $ = id => document.getElementById(id);
 const stage = $('stage');
 const viewport = $('viewport');
 const list = $('object-list');
+const compactLayout = matchMedia('(max-width: 1100px), (hover: none) and (pointer: coarse)');
 const colors = ['#e6a271', '#a7b6d0', '#b5c99c', '#c5accd'];
 const nodes = new Map();
 const uid = () => crypto.randomUUID();
 const fullFloor = (width, height) => ({ id: uid(), x: 0, y: 0, width, height });
 let project = {
-  format: 'furniture-layout', version: 1, unit: 'mm',
+  format: 'furniture-layout', version: 1, unit: 'mm', name: '家具配置データ',
   room: { width: 4000, height: 4000, calibrated: true, background: null, areas: [fullFloor(4000, 4000)], walls: [] },
   furniture: [], view: { zoom: 1, showPlan: true }
 };
@@ -64,6 +65,7 @@ function renderRegions() {
 }
 function render() {
   const room = project.room;
+  $('project-name').value = project.name;
   for (const item of project.furniture) {
     const node = nodes.get(item.id);
     const parent = item.position ? stage : node.slot;
@@ -198,6 +200,7 @@ function startFurniture(event, id) {
   const bounds = node.element.getBoundingClientRect();
   selectItem(id);
   gesture = { kind: 'furniture', id, pointerId: event.pointerId, target: node.element,
+    horizontalScroll: event.pointerType === 'touch' && !itemById(id).position && compactLayout.matches,
     startX: event.clientX, startY: event.clientY,
     grabX: (event.clientX - bounds.left) / bounds.width, grabY: (event.clientY - bounds.top) / bounds.height,
     ghost: null, position: null };
@@ -209,6 +212,7 @@ function updateFurniture(event) {
   const item = itemById(g.id);
   const node = nodes.get(g.id);
   if (!g.ghost) {
+    if (g.horizontalScroll && Math.abs(event.clientX - g.startX) >= Math.abs(event.clientY - g.startY)) return;
     if (Math.hypot(event.clientX - g.startX, event.clientY - g.startY) < 4) return;
     g.ghost = document.createElement('div');
     g.ghost.className = 'object drag-ghost';
@@ -364,7 +368,11 @@ $('object-form').addEventListener('submit', event => {
   else { project.furniture.push(item); serial++; addNode(item); }
   selectItem(item.id); render();
   status(existing ? `${item.name}の変更を保存しました。${existing.position ? '' : '現在は未配置です。'}` : `${item.name}を追加しました。ドラッグして配置できます。`);
-  if (!existing) { beginNew(); list.scrollTop = list.scrollHeight; }
+  if (!existing) {
+    beginNew();
+    if (compactLayout.matches) list.scrollLeft = list.scrollWidth;
+    else list.scrollTop = list.scrollHeight;
+  }
 });
 $('delete-object').addEventListener('click', () => {
   const item = itemById(editorId); if (!item) return;
@@ -451,9 +459,13 @@ function download(blob, filename) {
   const link = document.createElement('a'); link.href = url; link.download = filename;
   document.body.append(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
+$('project-name').addEventListener('input', () => { project.name = $('project-name').value; });
 $('export-project').addEventListener('click', () => {
   finishGesture(true);
-  download(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }), '家具配置データ.json');
+  project.name = project.name.trim() || '家具配置データ';
+  $('project-name').value = project.name;
+  const filename = project.name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '') || '家具配置データ';
+  download(new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }), `${filename}.json`);
   status('画像・壁・床範囲・家具を含む編集データを保存しました。同じサイトで読み込むと編集を続けられます。');
 });
 $('project-file').addEventListener('change', async event => {

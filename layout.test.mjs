@@ -48,12 +48,15 @@ test('nearest positions match exhaustive integer search with concave floors and 
 });
 
 test('project files preserve names, independent labels, images, geometry and unplaced objects', () => {
-  const model = { format: 'furniture-layout', version: 1, unit: 'mm', room: room(),
+  const model = { format: 'furniture-layout', version: 1, unit: 'mm', name: 'リビング案', room: room(),
     furniture: [furniture('ソファ', 1500, 600, { x: 100, y: 200 }), furniture('棚', 500, 1000)],
     view: { zoom: 1.5, showPlan: true } };
   model.furniture[0].label = 'S1';
   model.room.background = { name: 'plan.png', dataUrl: 'data:image/png;base64,AAAA' };
   assert.deepEqual(validateProject(JSON.parse(JSON.stringify(model))), model);
+  const legacy = structuredClone(model);
+  delete legacy.name;
+  assert.equal(validateProject(legacy).name, '家具配置データ');
   const snapshot = JSON.stringify(model);
   for (const change of [
     value => value.unit = 'm', value => value.version = 2,
