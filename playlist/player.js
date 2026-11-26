@@ -15,6 +15,7 @@ window.SegmentQueue = class SegmentQueue {
   }
   current() { return this.list?.clips.find(clip => clip.id === this.currentId) || null; }
   attach(api) { this.api = api; }
+  applyVolume() { this.api?.setVolume?.(this.current()?.volume ?? 100); }
   setList(list, cursor = null) {
     this.intent = false;
     this.armed = false;
@@ -56,6 +57,7 @@ window.SegmentQueue = class SegmentQueue {
       this.finished = false;
     }
     const clip = this.current();
+    this.applyVolume();
     this.intent = true;
     this.message = 'YouTubeから動画を読み込んでいます。';
     if (this.loadedId !== clip.id) {
@@ -99,6 +101,7 @@ window.SegmentQueue = class SegmentQueue {
     if (code === 1) {
       const videoId = this.api.getVideoData?.().video_id;
       if (videoId && videoId !== clip.videoId) return;
+      this.applyVolume();
       this.intent = true; this.armed = true;
       this.message = '指定した区間を再生中です。';
       this.tick();

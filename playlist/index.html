@@ -9,6 +9,7 @@
   <title>Playlist — 区間をつなぐ</title>
   <link rel="stylesheet" href="./playlist.css">
   <script src="./model.js" defer></script>
+  <script src="./metadata.js" defer></script>
   <script src="./player.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
@@ -33,9 +34,12 @@
         <form id="clip-form" class="clip-form">
           <h2 id="form-heading">動画を追加</h2>
           <label>YouTubeのURL<input id="video-url" type="text" placeholder="https://www.youtube.com/watch?v=…" maxlength="3000" required autocomplete="off" spellcheck="false"></label>
-          <label>タイトル <span class="optional">任意</span><input id="video-title" maxlength="200" placeholder="この区間の名前"></label>
+          <label>動画タイトル <span class="optional">自動取得・変更可</span><input id="video-title" maxlength="200" placeholder="URLから元動画のタイトルを取得します"></label>
+          <div class="form-actions"><button id="refresh-title" type="button">タイトルを再取得</button><p id="title-status" class="help" role="status" hidden></p></div>
           <div class="time-fields"><label>開始時刻<input id="start-time" type="text" inputmode="decimal" placeholder="0:00" autocomplete="off" aria-describedby="time-help"></label><label>終了時刻<input id="end-time" type="text" inputmode="decimal" placeholder="動画の最後まで" autocomplete="off" aria-describedby="time-help"></label></div>
           <p id="time-help" class="help">秒数、分:秒、時:分:秒で指定できます。例 90、1:30、0:01:30。空欄は先頭／最後です。</p>
+          <label class="volume-control" for="video-volume"><span>音量</span><input id="video-volume" type="range" min="0" max="100" step="1" value="100" aria-describedby="volume-help"><output id="video-volume-value" for="video-volume">100%</output></label>
+          <p id="volume-help" class="help">0%で消音、100%で元の音量です。追加後も一覧から調整できます。iPhone・iPadなどでは端末側の制約で音量設定が反映されない場合があります。</p>
           <p id="form-error" class="form-error" role="alert" hidden></p>
           <div class="form-actions"><button id="save-clip" class="primary" type="submit">リストに追加</button><button id="cancel-edit" type="button" hidden>編集をやめる</button><span class="draft-note">入力途中の内容も保存します</span></div>
         </form>
@@ -44,7 +48,8 @@
         <div class="player-top"><span class="eyebrow">NOW PLAYING</span><span id="playing-order"></span></div>
         <h2 id="player-heading">再生する動画を選択</h2>
         <p id="playing-range" class="range-label">追加した動画は、指定した区間で順番に再生します。</p>
-        <div id="player-frame" class="player-frame"><div id="youtube-player"></div><div id="player-placeholder" class="player-placeholder"><span class="play-symbol" aria-hidden="true"></span><p>再生ボタンでYouTubeに接続します</p></div></div>
+        <div id="player-slot" class="player-slot"><div id="player-frame" class="player-frame"><div id="youtube-player"></div><div id="player-placeholder" class="player-placeholder"><span class="play-symbol" aria-hidden="true"></span><p>再生ボタンでYouTubeに接続します</p></div></div></div>
+        <div id="floating-controls" class="floating-controls" hidden><button id="floating-play" type="button">一時停止</button><button id="return-player" type="button">元の位置へ戻る</button></div>
         <div class="transport"><button id="previous" type="button">前の動画</button><button id="play" class="primary" type="button">再生</button><button id="next" type="button">次の動画</button></div>
         <p id="play-status" class="play-status" role="status" aria-live="polite">再生すると、次の動画へ自動で切り替わります。</p>
         <a id="open-youtube" class="youtube-link" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer">YouTubeで開く</a>
@@ -53,6 +58,6 @@
     </div>
     <footer>編集内容はこの端末・ブラウザに保存します。別のブラウザへの同期はありません。ブラウザのデータ削除に備え、JSONを書き出して保管できます。</footer>
   </main>
-  <template id="clip-template"><li class="clip-row"><div class="clip-main"><button class="clip-play" type="button" aria-label="この動画を再生">再生</button><div class="clip-info"><h3></h3><p class="clip-range"></p><span class="video-id"></span></div></div><div class="clip-actions"><button data-action="up" type="button">上へ</button><button data-action="down" type="button">下へ</button><button data-action="edit" type="button">編集</button><button data-action="remove" class="danger" type="button">削除</button></div></li></template>
+  <template id="clip-template"><li class="clip-row"><div class="clip-main"><button class="clip-play" type="button" aria-label="この動画を再生">再生</button><div class="clip-info"><h3></h3><p class="clip-range"></p><span class="video-id"></span></div></div><label class="clip-volume volume-control"><span>音量</span><input class="clip-volume-input" type="range" min="0" max="100" step="1" value="100"><output>100%</output></label><div class="clip-actions"><button data-action="up" type="button">上へ</button><button data-action="down" type="button">下へ</button><button data-action="edit" type="button">編集</button><button data-action="remove" class="danger" type="button">削除</button></div></li></template>
 </body>
 </html>

@@ -18,9 +18,22 @@
   let player = null;
   let requestGeneration = 0;
   let lastCursorSave = 0;
+  let titleVersion = 0;
+  let manualTitleVersion = 0;
+  let titleTimer = null;
+  let pendingVideoId = null;
+  let pendingManualVersion = 0;
+  const pendingClipTitles = new Set();
   function playerVisible() {
     const rect = $('player-frame').getBoundingClientRect();
     return rect.bottom > 0 && rect.top < innerHeight && rect.right > 0 && rect.left < innerWidth;
+  }
+  function updateFloatingPlayer() {
+    const rect = $('player-slot').getBoundingClientRect();
+    const floating = Boolean(player && queue.loadedId && (rect.top < 12 || rect.bottom > innerHeight - 12));
+    $('player-frame').classList.toggle('is-floating', floating);
+    $('floating-controls').hidden = !floating;
+    document.body.classList.toggle('has-floating-player', floating);
   }
   const selected = () => library.playlists.find(list => list.id === library.selectedId);
   function storageError(message) { $('storage-error').textContent = message; $('storage-error').hidden = !message; }
@@ -50,7 +63,65 @@
     $('playlist-name').value = selected().name;
     $('loop').checked = selected().loop;
   }
-  function titleOf(clip, index) { return clip.title || `動画 ${index + 1}`; }
+  function titleOf(clip, index) {
+    return clip.title || (pendingClipTitles.has(clip.id) ? '動画タイトルを取得中…' : `動画 ${index + 1}（タイトル未取得）`);
+  }
+  function titleStatus(message) {
+    $('title-status').textContent = message;
+    $('title-status').hidden = !message;
+  }
+  function scheduleDraftTitle(force = false, refresh = false) {
+    clearTimeout(titleTimer);
+    const version = ++titleVersion;
+    const list = selected();
+    const draft = list.draft;
+    pendingVideoId = null;
+    titleStatus('');
+    if (!draft.url.trim() || (!force && draft.title.trim())) return;
+    let videoId;
+    try { videoId = M.parseVideo(draft.url).videoId; } catch { return; }
+    pendingVideoId = videoId;
+    pendingManualVersion = manualTitleVersion;
+    const manualVersion = manualTitleVersion;
+    const previousTitle = draft.title;
+    titleStatus('元動画のタイトルを取得しています…');
+    titleTimer = setTimeout(async () => {
+      try {
+        const title = await window.YouTubeTitles[refresh ? 'refresh' : 'load'](videoId);
+        if (version !== titleVersion || selected() !== list || list.draft !== draft ||
+            manualVersion !== manualTitleVersion || draft.title !== previousTitle) return;
+        draft.title = title;
+        $('video-title').value = title;
+        titleStatus('元動画のタイトルを取得しました。');
+        save();
+      } catch {
+        if (version === titleVersion && selected() === list && list.draft === draft) {
+          titleStatus('タイトルを取得できませんでした。再取得するか、手入力してください。動画はそのまま登録できます。');
+        }
+      } finally { if (version === titleVersion) pendingVideoId = null; }
+    }, refresh ? 0 : 350);
+  }
+  async function fillClipTitle(listId, clipId, videoId, previousTitle) {
+    const originalList = library.playlists.find(p => p.id === listId);
+    const originalClip = originalList?.clips.find(c => c.id === clipId);
+    pendingClipTitles.add(clipId);
+    renderRows();
+    try {
+      const title = await window.YouTubeTitles.load(videoId);
+      const list = library.playlists.find(p => p.id === listId);
+      const clip = list?.clips.find(c => c.id === clipId);
+      if (!clip || list !== originalList || clip !== originalClip || clip.videoId !== videoId || clip.title !== previousTitle) return;
+      clip.title = title;
+      let draftVideoId = null;
+      try { draftVideoId = M.parseVideo(list.draft.url).videoId; } catch {}
+      if (list.draft.editingId === clipId && list.draft.title === previousTitle && draftVideoId === videoId) {
+        list.draft.title = title;
+        if (selected() === list) $('video-title').value = title;
+      }
+      save();
+    } catch { /* A missing title never discards the clip or its time bounds. */ }
+    finally { pendingClipTitles.delete(clipId); renderRows(); }
+  }
   function renderRows() {
     const list = selected();
     $('empty-state').hidden = list.clips.length > 0;
@@ -61,6 +132,22 @@
       row.querySelector('h3').textContent = titleOf(clip, index);
       row.querySelector('.clip-range').textContent = M.rangeLabel(clip);
       row.querySelector('.video-id').textContent = clip.videoId;
+      const volume = row.querySelector('.clip-volume-input');
+      const volumeValue = row.querySelector('.clip-volume output');
+      volume.value = clip.volume;
+      volume.setAttribute('aria-label', `${titleOf(clip, index)}の音量`);
+      volumeValue.value = `${clip.volume}%`;
+      volume.addEventListener('input', () => {
+        clip.volume = Number(volume.value);
+        volumeValue.value = `${clip.volume}%`;
+        if (list.draft.editingId === clip.id) {
+          list.draft.volume = clip.volume;
+          $('video-volume').value = clip.volume;
+          $('video-volume-value').value = `${clip.volume}%`;
+        }
+        if (queue.list === list && queue.loadedId === clip.id) queue.applyVolume();
+        save();
+      });
       const play = row.querySelector('.clip-play');
       play.setAttribute('aria-label', `${titleOf(clip, index)}を再生`);
       play.addEventListener('click', () => start(clip.id));
@@ -77,10 +164,13 @@
     const draft = selected().draft;
     $('video-url').value = draft.url; $('video-title').value = draft.title;
     $('start-time').value = draft.start; $('end-time').value = draft.end;
+    $('video-volume').value = draft.volume;
+    $('video-volume-value').value = `${draft.volume}%`;
     $('form-heading').textContent = draft.editingId ? '動画の区間を編集' : '動画を追加';
     $('save-clip').textContent = draft.editingId ? '変更を保存' : 'リストに追加';
     $('cancel-edit').hidden = !draft.editingId;
     $('form-error').hidden = true;
+    scheduleDraftTitle();
   }
   function renderPlayer() {
     const clip = queue.current();
@@ -91,11 +181,13 @@
     $('playing-order').textContent = clip ? `${index + 1} / ${list.clips.length}` : '';
     $('play-status').textContent = queue.message || '再生すると、次の動画へ自動で切り替わります。';
     $('play').textContent = queue.intent ? '一時停止' : '再生';
+    $('floating-play').textContent = queue.intent ? '一時停止' : '再生';
     $('play').disabled = !selected().clips.length;
     $('previous').disabled = !selected().clips.length;
     $('next').disabled = !selected().clips.length;
     $('open-youtube').href = clip ? M.watchUrl(clip) : 'https://www.youtube.com/';
     for (const row of $('clip-list').children) row.classList.toggle('current', row.dataset.id === clip?.id);
+    updateFloatingPlayer();
   }
   function bindSelected() {
     requestGeneration++;
@@ -104,7 +196,7 @@
   }
   function captureDraft() {
     Object.assign(selected().draft, { url: $('video-url').value.slice(0, 3000), title: $('video-title').value.slice(0, 200),
-      start: $('start-time').value.slice(0, 40), end: $('end-time').value.slice(0, 40) });
+      start: $('start-time').value.slice(0, 40), end: $('end-time').value.slice(0, 40), volume: Number($('video-volume').value) });
     save();
   }
   function rowAction(action, id) {
@@ -113,7 +205,7 @@
     if (index < 0) return;
     const clip = list.clips[index];
     if (action === 'edit') {
-      list.draft = { editingId: id, url: `https://www.youtube.com/watch?v=${clip.videoId}`, title: clip.title, start: M.formatTime(clip.start), end: clip.end === null ? '' : M.formatTime(clip.end) };
+      list.draft = { editingId: id, url: `https://www.youtube.com/watch?v=${clip.videoId}`, title: clip.title, start: M.formatTime(clip.start), end: clip.end === null ? '' : M.formatTime(clip.end), volume: clip.volume };
       renderForm(); save(); $('video-url').focus(); return;
     }
     if (action === 'remove') {
@@ -172,7 +264,7 @@
               },
               onStateChange: event => {
                 queue.state(event.data);
-                if (event.data === 1 && (!playerVisible() || document.hidden)) queue.pause('プレーヤーが画面外のため一時停止しました。画面に戻して再生を押してください。');
+                if (event.data === 1 && document.hidden) queue.pause('ページを離れたため一時停止しました。再生を押すと続きから再開します。');
               },
               onError: event => queue.error(event.data),
               onAutoplayBlocked: () => queue.blocked()
@@ -222,7 +314,20 @@
     library.selectedId = library.playlists[0].id; library.cursor = null;
     bindSelected(); save();
   });
-  for (const id of ['video-url', 'video-title', 'start-time', 'end-time']) $(id).addEventListener('input', captureDraft);
+  for (const id of ['video-url', 'video-title', 'start-time', 'end-time']) $(id).addEventListener('input', () => {
+    if (id === 'video-title') manualTitleVersion++;
+    captureDraft();
+    if (id === 'video-url') scheduleDraftTitle(true);
+  });
+  $('refresh-title').addEventListener('click', () => {
+    captureDraft();
+    try { M.parseVideo(selected().draft.url); scheduleDraftTitle(true, true); }
+    catch (error) { titleStatus(error.message); }
+  });
+  $('video-volume').addEventListener('input', () => {
+    $('video-volume-value').value = `${$('video-volume').value}%`;
+    captureDraft();
+  });
   $('video-url').addEventListener('change', () => {
     try {
       const video = M.parseVideo($('video-url').value);
@@ -237,6 +342,7 @@
     try {
       const id = list.draft.editingId;
       const clip = M.clipFromDraft(list.draft, id);
+      const fetchTitle = !clip.title || (pendingVideoId === clip.videoId && pendingManualVersion === manualTitleVersion);
       if (id) {
         const index = list.clips.findIndex(c => c.id === id);
         if (index < 0) throw new Error('編集対象が見つかりません。リストを確認してください。');
@@ -246,10 +352,13 @@
       list.draft = M.blankDraft();
       if (!queue.currentId) queue.currentId = clip.id;
       renderForm(); renderRows(); save();
+      if (fetchTitle) fillClipTitle(list.id, clip.id, clip.videoId, clip.title);
     } catch (error) { $('form-error').textContent = error.message; $('form-error').hidden = false; }
   });
   $('cancel-edit').addEventListener('click', () => { selected().draft = M.blankDraft(); renderForm(); save(); });
   $('play').addEventListener('click', () => start());
+  $('floating-play').addEventListener('click', () => start());
+  $('return-player').addEventListener('click', () => $('player-slot').scrollIntoView({ block: 'center', behavior: 'smooth' }));
   $('previous').addEventListener('click', () => { requestGeneration++; queue.move(-1); });
   $('next').addEventListener('click', () => { requestGeneration++; queue.move(1); });
   setInterval(() => {
@@ -262,9 +371,9 @@
     requestGeneration++;
     queue.pause('ページを離れたため一時停止しました。再生を押すと続きから再開します。');
   });
-  new IntersectionObserver(entries => {
-    if (!entries[0].isIntersecting && queue.intent) queue.pause('プレーヤーが画面外のため一時停止しました。画面に戻して再生を押してください。');
-  }).observe($('player-frame'));
+  window.addEventListener('scroll', updateFloatingPlayer, { passive: true });
+  window.addEventListener('resize', updateFloatingPlayer);
+  new ResizeObserver(updateFloatingPlayer).observe($('player-slot'));
   window.addEventListener('pagehide', () => { requestGeneration++; queue.pause(); save(); });
   window.addEventListener('storage', event => {
     if (event.key !== M.KEY) return;

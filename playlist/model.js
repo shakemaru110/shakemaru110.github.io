@@ -2,7 +2,8 @@
 window.PlaylistModel = (() => {
   const KEY = 'shakemaru.playlist.library.v1';
   const uid = () => crypto.randomUUID();
-  const blankDraft = () => ({ editingId: null, url: '', title: '', start: '', end: '' });
+  const blankDraft = () => ({ editingId: null, url: '', title: '', start: '', end: '', volume: 100 });
+  const validVolume = value => value === undefined || (Number.isInteger(value) && value >= 0 && value <= 100);
   const newList = (name = 'マイプレイリスト') => ({ id: uid(), name, loop: false, clips: [], draft: blankDraft() });
   function newLibrary() {
     const list = newList();
@@ -56,7 +57,8 @@ window.PlaylistModel = (() => {
     const start = parseTime(draft.start, 0);
     const end = parseTime(draft.end, null);
     if (end !== null && end <= start) throw new Error('終了時刻は開始時刻より後にしてください。');
-    return { id: existingId || uid(), videoId: video.videoId, title: draft.title.trim().slice(0, 200), start, end };
+    if (!validVolume(draft.volume)) throw new Error('音量は0〜100の整数で指定してください。');
+    return { id: existingId || uid(), videoId: video.videoId, title: draft.title.trim().slice(0, 200), start, end, volume: draft.volume ?? 100 };
   }
   function validateLibrary(data) {
     const fail = () => { throw new Error('このページで書き出した有効なプレイリストJSONを選択してください。'); };
@@ -71,14 +73,14 @@ window.PlaylistModel = (() => {
       const clipIds = new Set();
       const clips = list.clips.map(clip => {
         if (!clip || !validId(clip.id) || clipIds.has(clip.id) || !/^[A-Za-z0-9_-]{11}$/.test(clip.videoId) || !text(clip.title, 200) || !number(clip.start) ||
-            (clip.end !== null && (!number(clip.end) || clip.end <= clip.start))) fail();
+            (clip.end !== null && (!number(clip.end) || clip.end <= clip.start)) || !validVolume(clip.volume)) fail();
         clipIds.add(clip.id);
-        return { id: clip.id, videoId: clip.videoId, title: clip.title, start: clip.start, end: clip.end };
+        return { id: clip.id, videoId: clip.videoId, title: clip.title, start: clip.start, end: clip.end, volume: clip.volume ?? 100 };
       });
       const draft = list.draft || blankDraft();
-      if (!text(draft.url, 3000) || !text(draft.title, 200) || !text(draft.start, 40) || !text(draft.end, 40)) fail();
+      if (!text(draft.url, 3000) || !text(draft.title, 200) || !text(draft.start, 40) || !text(draft.end, 40) || !validVolume(draft.volume)) fail();
       return { id: list.id, name: list.name, loop: list.loop, clips, draft: {
-        editingId: clipIds.has(draft.editingId) ? draft.editingId : null, url: draft.url, title: draft.title, start: draft.start, end: draft.end
+        editingId: clipIds.has(draft.editingId) ? draft.editingId : null, url: draft.url, title: draft.title, start: draft.start, end: draft.end, volume: draft.volume ?? 100
       } };
     });
     let cursor = null;
